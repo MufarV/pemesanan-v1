@@ -1,16 +1,26 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=Caveat:wght@600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Outfit", sans-serif;
+  --font-handwriting: "Caveat", cursive;
   
-  --color-brand-bg: #FFF5F7;
-  --color-brand-pink: #ec4899;
-  --color-brand-pink-light: #FFF5F7;
-  --color-brand-deep-pink: #db2777;
-  --color-brand-orange: #fb923c;
-  --color-brand-text: #4A4A4A;
+  /* Brand mappings: Soft peach, coral, and warm yellow matching the logo */
+  --color-brand-bg: #FFF8F5;
+  --color-brand-pink: #FF8260; /* Coral/Peach to replace pink, fits orange logo but stays girly */
+  --color-brand-pink-light: #FFEAE3;
+  --color-brand-deep-pink: #FF5A33; /* Deep Coral */
+  --color-brand-orange: #FFB800; /* Yellow from logo */
+  --color-brand-accent: #FFB800;
+  --color-brand-text: #5C3A21; /* Brown text matching peanut sauce */
+
+  --color-pink-50: #FFF8F5;
+  --color-pink-100: #FFEAE3;
+  --color-pink-200: #FFD4C7;
+  --color-pink-300: #FFA98F;
+  --color-pink-400: #FF8260;
+  --color-pink-500: #FF5A33;
 }
 
 @layer base {
@@ -19,19 +29,19 @@
   }
   
   h1, h2, h3, h4 {
-    @apply font-display tracking-tight;
+    @apply font-display tracking-tight text-brand-text;
   }
 }
 
 .glass {
-  @apply bg-white/70 backdrop-blur-md border border-pink-100;
+  @apply bg-white/80 backdrop-blur-md border border-white/50;
 }
 
 .shadow-soft {
-  box-shadow: 0 10px 30px -10px rgba(236, 72, 153, 0.15);
+  box-shadow: 0 10px 40px -10px rgba(255, 107, 139, 0.2);
 }
 
 .card-vibrant {
-  @apply bg-white p-4 rounded-[32px] border-2 border-transparent hover:border-pink-300 shadow-lg transition-all duration-300;
+  @apply bg-white p-4 rounded-[32px] border-2 border-transparent hover:border-pink-200 shadow-lg transition-all duration-300;
 }
 

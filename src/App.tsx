@@ -12,7 +12,8 @@ import {
   Phone,
   Heart,
   Flame,
-  Zap
+  Zap,
+  QrCode
 } from 'lucide-react';
 import { cn } from './lib/utils';
 
@@ -23,49 +24,53 @@ interface Product {
   price: number;
   description: string;
   image: string;
-  category: 'Popular' | 'Classic' | 'Special';
-  spicy?: boolean;
 }
 
-interface CartItem extends Product {
+interface CartItem {
+  id: string;
+  name: string;
+  kuah: string;
+  price: number;
+  image: string;
   quantity: number;
 }
 
+interface FallingCilok {
+  id: number;
+  x: number;
+  size: number;
+  rotation: number;
+  duration: number;
+}
+
 // --- Data ---
-const PRODUCTS: Product[] = [
+const ISI_OPTIONS: Product[] = [
   {
-    id: '1',
-    name: 'Cilok Original Premium',
+    id: 'Keju',
+    name: 'Cheelok Isi Keju',
     price: 15000,
-    description: 'Cilok kenyal dengan isian daging sapi dan bumbu kacang rahasia yang gurih.',
-    image: 'https://images.unsplash.com/photo-1541544741938-0af808871cc0?auto=format&fit=crop&q=80&w=800',
-    category: 'Classic'
+    description: 'Keju lumer di dalam cilok kenyal. Cocok untuk pecinta gurih manis! 🧀',
+    image: 'https://images.unsplash.com/photo-1548345680-f5475aa5114a?auto=format&fit=crop&q=80&w=800'
   },
   {
-    id: '2',
-    name: 'Cilok Mercon Luber',
-    price: 18000,
-    description: 'Rasa pedas nampol dengan isian cabai rawit yang bikin melek pas nugas.',
-    image: 'https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?auto=format&fit=crop&q=80&w=800',
-    category: 'Popular',
-    spicy: true
+    id: 'Ayam',
+    name: 'Cheelok Isi Ayam',
+    price: 15000,
+    description: 'Daging ayam cincang gurih nendang di setiap gigitan 🍗',
+    image: 'https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?auto=format&fit=crop&q=80&w=800'
   },
   {
-    id: '3',
-    name: 'Cilok Mozzarella Melt',
-    price: 22000,
-    description: 'Sensasi keju mozzarella yang lumer di mulut. Favorit banget buat temen nonton drakor!',
-    image: 'https://images.unsplash.com/photo-1548345680-f5475aa5114a?auto=format&fit=crop&q=80&w=800',
-    category: 'Special'
-  },
-  {
-    id: '4',
-    name: 'Cilok Kuah Goang',
-    price: 20000,
-    description: 'Kuah bening pedas segar dengan perasan jeruk limau. Seger pol!',
-    image: 'https://images.unsplash.com/photo-1626777552726-4a6b52c67ad5?auto=format&fit=crop&q=80&w=800',
-    category: 'Popular'
+    id: 'Tamago',
+    name: 'Cheelok Isi Tamago',
+    price: 15000,
+    description: 'Telur gurih ala Jepang tersembunyi di dalam tekstur chewy 🥚',
+    image: 'https://images.unsplash.com/photo-1541544741938-0af808871cc0?auto=format&fit=crop&q=80&w=800'
   }
+];
+
+const KUAH_OPTIONS = [
+  "Saos Kacang",
+  "Kuah Seblak"
 ];
 
 const TESTIMONIALS = [
@@ -74,21 +79,103 @@ const TESTIMONIALS = [
   { name: 'Indah', role: 'Mahasiswa Kedokteran', comment: 'Udah langganan dari semester 1. Rasanya konsisten enak dan pengirimannya cepet!' }
 ];
 
+const PO_TIMES = [
+  "Pagi (10:00 WIB)",
+  "Siang (13:00 WIB)",
+  "Sore (16:00 WIB)"
+];
+
+const PAYMENT_METHODS = [
+  "Bayar di Tempat (Cash/TF)",
+  "Bayar Sekarang (Transfer)"
+];
+
+function ProductCard({ item, onAdd }: { item: Product, onAdd: (product: Product, kuah: string) => void }) {
+  const [kuah, setKuah] = useState(KUAH_OPTIONS[0]);
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="card-vibrant group flex flex-col items-center text-center p-6 border border-pink-50"
+    >
+      <div className="w-40 h-40 bg-pink-50 rounded-full mb-6 flex items-center justify-center relative overflow-hidden group-hover:scale-105 transition-transform duration-500 border border-pink-100 shrink-0">
+        <img 
+          src={item.image} 
+          alt={item.name}
+          className="w-full h-full object-cover opacity-90"
+        />
+      </div>
+      
+      <h3 className="font-display font-bold text-lg text-gray-800 mb-2">{item.name}</h3>
+      <p className="text-gray-400 text-xs mb-4 px-2 italic font-medium leading-relaxed">{item.description}</p>
+      
+      <div className="w-full mt-auto mb-4 text-left">
+        <label className="block text-[10px] font-bold text-brand-pink uppercase tracking-widest mb-1.5 ml-1">Pilihan Kuah/Saos</label>
+        <select 
+          value={kuah}
+          onChange={(e) => setKuah(e.target.value)}
+          className="w-full text-xs font-bold text-gray-700 p-2.5 rounded-xl bg-brand-bg border border-pink-100 focus:outline-none focus:ring-2 focus:ring-brand-pink appearance-none cursor-pointer text-center"
+        >
+          {KUAH_OPTIONS.map(opt => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      </div>
+      
+      <div className="flex items-center justify-between w-full pt-4 border-t border-pink-100">
+        <span className="font-black text-xl text-brand-pink tracking-tight">
+          Rp{item.price.toLocaleString('id-ID')}
+        </span>
+        <button 
+          onClick={() => onAdd(item, kuah)}
+          className="w-10 h-10 bg-brand-pink hover:bg-brand-deep-pink rounded-xl text-white font-bold text-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all font-display"
+        >
+          +
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function App() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [activeCategory, setActiveCategory] = useState('All');
+  const [customerName, setCustomerName] = useState('');
+  const [poDate, setPODate] = useState(new Date().toISOString().split('T')[0]);
+  const [poTime, setPOTime] = useState(PO_TIMES[0]);
+  const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHODS[0]);
+  const [fallingCiloks, setFallingCiloks] = useState<FallingCilok[]>([]);
+
+  const handleLogoClick = () => {
+    const newCiloks = Array.from({ length: 15 }).map((_, i) => ({
+      id: Date.now() + i,
+      x: Math.random() * 90, // 0 to 90vw
+      size: Math.random() * 40 + 30, // 30px to 70px
+      rotation: Math.random() * 360,
+      duration: Math.random() * 2 + 1.5, // 1.5s to 3.5s
+    }));
+    setFallingCiloks(prev => [...prev, ...newCiloks]);
+    
+    // Cleanup after animation completes
+    setTimeout(() => {
+      setFallingCiloks(prev => prev.filter(c => !newCiloks.find(nc => nc.id === c.id)));
+    }, 4000);
+  };
 
   // --- Handlers ---
-  const addToCart = (product: Product) => {
+  const addToCart = (product: Product, kuah: string) => {
+    const cartId = `${product.id}-${kuah}`;
     setCart(prev => {
-      const existing = prev.find(item => item.id === product.id);
+      const existing = prev.find(item => item.id === cartId);
       if (existing) {
         return prev.map(item => 
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.id === cartId ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
-      return [...prev, { ...product, quantity: 1 }];
+      return [...prev, { id: cartId, name: product.name, kuah, price: product.price, image: product.image, quantity: 1 }];
     });
   };
 
@@ -110,58 +197,76 @@ export default function App() {
   const totalPrice = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
   const handleCheckout = () => {
-    const message = `Halo Kak! Saya mau pesan Cilok Aestetik:\n\n` +
-      cart.map(item => `- ${item.name} x${item.quantity}`).join('\n') +
-      `\n\nTotal: Rp${totalPrice.toLocaleString('id-ID')}\n` +
-      `Alamat & Nama: `;
+    if (!customerName.trim()) {
+      alert('Tulis nama panggilan kamu dulu ya, Bestie! 💖');
+      return;
+    }
+
+    const message = `Halo Kak! Saya mau pesan CHEELOK:\n\n` +
+      `Nama: ${customerName}\n` +
+      `Ambil PO: ${poDate} - ${poTime}\n` +
+      `Metode Pembayaran: ${paymentMethod}\n\n` +
+      `Pesanan:\n` +
+      cart.map(item => `- ${item.name} (${item.kuah}) x${item.quantity}`).join('\n') +
+      `\n\nTotal Bayar: Rp${(totalPrice - 5000).toLocaleString('id-ID')}\n`;
     
     window.open(`https://wa.me/6289691223205?text=${encodeURIComponent(message)}`, '_blank');
   };
 
   return (
-    <div className="min-h-screen pb-12 overflow-x-hidden selection:bg-brand-pink selection:text-brand-accent">
+    <div className="min-h-screen bg-gradient-to-br from-[#FFF8F5] via-white to-[#FFF0E5] pb-12 overflow-x-hidden selection:bg-brand-pink selection:text-white">
+      {/* --- Falling Cilok Animation --- */}
+      {fallingCiloks.map(cilok => (
+        <motion.div
+          key={cilok.id}
+          initial={{ top: -100, x: `${cilok.x}vw`, rotate: 0 }}
+          animate={{ top: '120vh', rotate: cilok.rotation }}
+          transition={{ duration: cilok.duration, ease: "easeIn" }}
+          className="fixed pointer-events-none z-50 drop-shadow-xl"
+          style={{ width: cilok.size, height: cilok.size }}
+        >
+          <img src="/logo.png" alt="cilok jatuh" className="w-full h-full object-contain" />
+        </motion.div>
+      ))}
+
       {/* --- Sticky Header --- */}
       <header className="sticky top-0 z-40 bg-white border-b border-pink-100 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 h-24 flex items-center justify-between">
           <motion.div 
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="flex items-center gap-2"
+            className="flex items-center gap-3 cursor-pointer group"
+            onClick={handleLogoClick}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
           >
-            <div className="w-10 h-10 bg-brand-pink rounded-full flex items-center justify-center text-white font-bold text-xl">
-              C
+            <img 
+              src="/logo.png" 
+              alt="Cheelok Logo" 
+              className="h-16 md:h-20 w-auto object-contain hidden group-hover:rotate-6 transition-transform duration-300 drop-shadow-md"
+              onLoad={(e) => {
+                e.currentTarget.style.display = 'block';
+                const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                if (fallback) fallback.style.display = 'none';
+              }}
+            />
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-brand-pink rounded-full flex items-center justify-center text-white font-bold text-xl border-2 border-brand-accent shadow-sm overflow-hidden flex-shrink-0">
+                <span className="font-display font-black text-brand-accent" style={{ WebkitTextStroke: '0.5px white' }}>C</span>
+              </div>
+              <h1 className="text-2xl font-display font-black tracking-tighter text-brand-pink italic drop-shadow-sm uppercase" style={{ WebkitTextStroke: '1px var(--color-brand-accent)' }}>
+                CHEELOK
+              </h1>
             </div>
-            <h1 className="text-2xl font-display font-black tracking-tighter text-brand-pink italic">
-              CilokHits<span className="text-brand-orange font-medium">.id</span>
-            </h1>
           </motion.div>
 
           <div className="flex items-center gap-6">
             <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
               <a href="#menu" className="text-brand-pink font-semibold border-b-2 border-brand-pink pb-1">Menu</a>
-              <a href="#testimonials" className="hover:text-brand-pink transition-colors">Promo Kampus</a>
-              <a href="#" className="hover:text-brand-pink transition-colors">Tentang Kami</a>
+              <a href="#testimonials" className="hover:text-brand-pink transition-colors">Testimoni</a>
+              <a href="#about" className="hover:text-brand-pink transition-colors">Tentang Kami</a>
             </nav>
             
-            <div className="hidden sm:block px-4 py-2 bg-pink-100 text-brand-pink rounded-full font-bold text-sm cursor-pointer whitespace-nowrap">
-              Saldo: Rp 50.000
-            </div>
-
-            <button 
-              onClick={() => setIsCartOpen(true)}
-              className="relative p-2.5 hover:bg-brand-pink/10 rounded-full transition-all group"
-            >
-              <ShoppingBag className={cn("w-6 h-6 text-brand-text group-hover:text-brand-pink transition-colors", totalItems > 0 && "text-brand-pink")} />
-              {totalItems > 0 && (
-                <motion.span 
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="absolute -top-1 -right-1 w-5 h-5 bg-brand-pink text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-lg shadow-brand-pink/40"
-                >
-                  {totalItems}
-                </motion.span>
-              )}
-            </button>
           </div>
         </div>
       </header>
@@ -178,19 +283,27 @@ export default function App() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
           >
-            <span className="inline-block px-4 py-1.5 bg-white border border-pink-200 rounded-full text-brand-pink text-xs font-bold mb-6 shadow-soft uppercase tracking-wider">
-              ✨ Snack Terlaris Se-Kampus
+            <span className="inline-block px-4 py-1.5 bg-brand-pink text-white rounded-full text-xs font-bold mb-6 shadow-soft uppercase tracking-wider">
+              🌸 Teman Nyemil Mahasiswi
             </span>
-            <h2 className="text-4xl md:text-6xl font-display font-black text-gray-800 leading-[1.1] mb-6">
-              Mau Cilok Apa Hari Ini, <span className="text-brand-pink underline decoration-brand-pink decoration-4 underline-offset-4">Sis?</span>
+            <h2 className="text-4xl md:text-6xl font-display font-black text-gray-800 leading-[1.1] mb-4">
+              Chill Perutnya, <br className="hidden md:block"/> <span className="text-brand-pink relative whitespace-nowrap">
+                Hemat Harganya!
+                <svg className="absolute w-full h-4 -bottom-1 left-0 text-brand-orange" viewBox="0 0 100 10" preserveAspectRatio="none">
+                  <path d="M0 5 Q 50 15 100 5" stroke="currentColor" strokeWidth="4" fill="transparent" />
+                </svg>
+              </span>
             </h2>
-            <p className="text-gray-500 text-lg mb-8 max-w-md font-medium italic leading-relaxed">
-              Snack favorit mahasiswi hits se-Indonesia. Teman setia nugas, gibah, dan istirahat!
+            <p className="font-handwriting text-3xl text-brand-orange mb-6 -rotate-2">
+              Spesial buat bestie-bestie kampus ✨
+            </p>
+            <p className="text-gray-500 text-lg mb-8 max-w-md font-medium leading-relaxed">
+              Jajanan cilok estetik dengan bumbu kacang lumer. Bikin mood nugas & gibah naik, kantong tetap aman 💖
             </p>
 
             <div className="flex flex-wrap gap-4">
-              <a href="#menu" className="px-8 py-4 bg-brand-pink text-white rounded-2xl font-black shadow-xl shadow-brand-pink/30 hover:bg-brand-deep-pink transition-all flex items-center gap-2">
-                CEK MENU HITS <ChevronRight className="w-5 h-5" />
+              <a href="#menu" className="px-8 py-4 bg-brand-pink text-white rounded-full font-black shadow-xl shadow-brand-pink/30 hover:bg-brand-deep-pink transition-all flex items-center gap-2 border-b-4 border-brand-deep-pink active:border-b-0 active:translate-y-1">
+                JAJAN SEKARANG <ChevronRight className="w-5 h-5 stroke-[3px]" />
               </a>
             </div>
           </motion.div>
@@ -210,13 +323,15 @@ export default function App() {
             </div>
             {/* Decoration Elements */}
             <div className="absolute -top-6 -right-6 w-32 h-32 bg-pink-100 rounded-full -z-10 animate-pulse" />
-            <div className="absolute -bottom-10 -left-10 bg-white p-6 rounded-3xl shadow-xl z-20 flex items-center gap-4 border border-pink-50">
-               <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center text-brand-orange">
+            <div className="absolute -top-4 -left-4 text-4xl animate-bounce" style={{ animationDuration: '3s' }}>✨</div>
+            <div className="absolute bottom-10 -right-8 text-5xl">🌸</div>
+            <div className="absolute -bottom-10 -left-10 bg-white/90 backdrop-blur-sm p-5 rounded-[2rem] shadow-xl z-20 flex items-center gap-4 border-2 border-pink-100">
+               <div className="w-12 h-12 bg-pink-50 rounded-2xl flex items-center justify-center text-brand-pink">
                   <Flame className="w-6 h-6 fill-current" />
                </div>
                <div>
-                  <p className="text-[10px] font-black text-red-500 uppercase tracking-widest">HOT SELLER</p>
-                  <p className="font-display font-bold text-lg">Cilok Bumbu Kacang</p>
+                  <p className="text-[10px] font-black text-brand-orange uppercase tracking-widest">BEST SELLER 💖</p>
+                  <p className="font-display font-bold text-base text-gray-800">Cilok Bumbu Kacang</p>
                </div>
             </div>
           </motion.div>
@@ -225,75 +340,18 @@ export default function App() {
 
       {/* --- Menu Section --- */}
       <section id="menu" className="max-w-6xl mx-auto px-4 py-20">
-        <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-6">
+        <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-6 relative">
+          <div className="absolute -top-10 -left-4 text-4xl opacity-50 rotate-12">🍓</div>
           <div>
-            <h2 className="text-3xl font-display font-black text-gray-800">Cilok Pilihan <span className="text-brand-pink">Mahasiswi</span></h2>
-            <p className="text-gray-400 font-medium italic mt-1">Sesuaikan dengan mood-mu hari ini ✨</p>
-          </div>
-          <div className="flex gap-2">
-            {['All', 'Popular', 'Classic', 'Special'].map(cat => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                className={cn(
-                  "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border-2",
-                  activeCategory === cat 
-                    ? "bg-brand-pink text-white border-brand-pink shadow-md" 
-                    : "bg-white text-gray-400 border-gray-100 hover:border-pink-200"
-                )}
-              >
-                {cat}
-              </button>
-            ))}
+            <h2 className="text-3xl md:text-4xl font-display font-black text-gray-800">Pilihan Menu <span className="text-brand-pink">Estetik</span></h2>
+            <p className="text-gray-500 font-medium mt-2">Pilih bestie cilokmu dengan kuah / saos favorit! ✨</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           <AnimatePresence mode="popLayout">
-            {PRODUCTS
-              .filter(p => activeCategory === 'All' || p.category === activeCategory)
-              .map((product) => (
-              <motion.div
-                layout
-                key={product.id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="card-vibrant group flex flex-col items-center text-center"
-              >
-                <div className="w-40 h-40 bg-pink-50 rounded-full mb-6 flex items-center justify-center relative overflow-hidden group-hover:scale-105 transition-transform duration-500 border border-pink-100">
-                  <img 
-                    src={product.image} 
-                    alt={product.name}
-                    className="w-full h-full object-cover opacity-90"
-                  />
-                  {product.spicy && (
-                    <div className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-md z-10">
-                      PEDAS MAMPUS
-                    </div>
-                  )}
-                  {product.category === 'Popular' && (
-                    <div className="absolute top-2 left-2 bg-brand-orange text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-md z-10">
-                      MOST WANTED
-                    </div>
-                  )}
-                </div>
-                
-                <h3 className="font-display font-bold text-lg text-gray-800 mb-2">{product.name}</h3>
-                <p className="text-gray-400 text-xs mb-6 px-2 italic font-medium leading-relaxed">{product.description}</p>
-                
-                <div className="flex items-center justify-between w-full mt-auto pt-4 border-t border-pink-100">
-                  <span className="font-black text-xl text-brand-pink tracking-tight">
-                    Rp{product.price.toLocaleString('id-ID')}
-                  </span>
-                  <button 
-                    onClick={() => addToCart(product)}
-                    className="w-10 h-10 bg-brand-pink hover:bg-brand-deep-pink rounded-xl text-white font-bold text-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all"
-                  >
-                    +
-                  </button>
-                </div>
-              </motion.div>
+            {ISI_OPTIONS.map((product) => (
+              <ProductCard key={product.id} item={product} onAdd={addToCart} />
             ))}
           </AnimatePresence>
         </div>
@@ -302,24 +360,27 @@ export default function App() {
       {/* --- Campus Info Bar --- */}
       <div className="h-12 bg-brand-pink flex items-center px-8 gap-10 overflow-hidden mt-12">
         <div className="flex items-center gap-2 whitespace-nowrap text-white text-[10px] font-bold uppercase tracking-widest">
-          <span className="bg-white text-brand-pink px-2 py-0.5 rounded">INFO</span>
+          <span className="bg-brand-accent text-brand-text px-2 py-0.5 rounded">INFO</span>
           GRATIS ONGKIR SE-AREA KAMPUS UNPAD & ITB (MIN 15RB)
         </div>
         <div className="flex items-center gap-2 whitespace-nowrap text-white text-[10px] font-bold uppercase tracking-widest">
-          <span className="bg-white text-brand-pink px-2 py-0.5 rounded">OPEN</span>
+          <span className="bg-brand-accent text-brand-text px-2 py-0.5 rounded">OPEN</span>
           ORDER HARI INI SAMPAI JAM 21.00 WIB
         </div>
         <div className="flex items-center gap-2 whitespace-nowrap text-white text-[10px] font-bold uppercase tracking-widest">
-          <span className="bg-white text-brand-pink px-2 py-0.5 rounded">IG</span>
-          @CILOKHITS.CAMPUS
+          <span className="bg-brand-accent text-brand-text px-2 py-0.5 rounded">IG</span>
+          @CHEELOK.KAMPUS
         </div>
       </div>
 
       {/* --- Testimonials --- */}
       <section id="testimonials" className="py-24 max-w-6xl mx-auto px-4">
-        <div className="text-center mb-16">
-             <h2 className="text-3xl font-display font-black text-gray-800 mb-2 italic">Mending tanyain mereka...</h2>
-             <p className="text-brand-pink-500 uppercase tracking-[0.2em] text-[10px] font-black">REVIEW JUJUR MAHASISWA HITS</p>
+        <div className="text-center mb-16 relative">
+             <div className="absolute text-5xl opacity-40 top-0 left-10 hidden md:block -rotate-12">💖</div>
+             <div className="absolute text-4xl opacity-40 bottom-0 right-10 hidden md:block rotate-12">✨</div>
+             <h2 className="text-4xl font-handwriting text-brand-pink mb-2">Kata Bestie-bestie...</h2>
+             <h3 className="text-3xl font-display font-black text-gray-800 mb-2">Review Jujur Mahasiswi</h3>
+             <p className="text-gray-400 text-sm font-medium">Bukan endorse, aseli dari hati 🌸</p>
         </div>
         <div className="grid md:grid-cols-3 gap-8">
           {TESTIMONIALS.map((t, i) => (
@@ -346,26 +407,80 @@ export default function App() {
         </div>
       </section>
 
+      {/* --- Tentang Kami --- */}
+      <section id="about" className="px-4 py-16 md:py-24 max-w-7xl mx-auto">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl md:text-4xl font-display font-black text-gray-800">Tentang <span className="text-brand-pink">Kami</span></h2>
+          <p className="text-gray-500 font-medium mt-2">Berawal dari keisengan, jadi kesayangan perut netizen ✨</p>
+        </div>
+        
+        <div className="grid md:grid-cols-2 gap-8 items-center max-w-5xl mx-auto">
+          <div className="space-y-6">
+            <div className="bg-pink-50 p-6 rounded-[2rem] border border-pink-100 relative">
+              <div className="absolute top-4 right-4 text-3xl opacity-50">👩‍🍳</div>
+              <h3 className="font-display font-bold text-xl text-gray-800 mb-2">Tujuan Bisnis</h3>
+              <p className="text-gray-600 text-sm leading-relaxed font-medium">
+                Cheelok hadir untuk menjadi "teman nyemil" utama semua orang, terutama para mahasiswa. Kami ingin menyajikan cilok berkualitas dengan bumbu dan isian yang ga pelit, bikin perut kenyang dan mood naik lagi pas lagi beraktivitas.
+              </p>
+            </div>
+            
+            <div className="bg-white p-6 rounded-[2rem] border border-pink-100 shadow-sm">
+              <h3 className="font-display font-bold text-xl text-gray-800 mb-4">Tim Kami</h3>
+              <ul className="space-y-4">
+                <li className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-brand-pink text-white rounded-full flex items-center justify-center font-bold font-display shadow-sm text-lg">S</div>
+                  <div>
+                    <p className="font-bold text-gray-800 text-sm">Siska</p>
+                    <p className="text-xs text-gray-500 font-medium">CEO & Master Chef Cilok</p>
+                  </div>
+                </li>
+                <li className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-brand-orange text-white rounded-full flex items-center justify-center font-bold font-display shadow-sm text-lg">A</div>
+                  <div>
+                    <p className="font-bold text-gray-800 text-sm">Andi</p>
+                    <p className="text-xs text-gray-500 font-medium">Marketing & Sosmed</p>
+                  </div>
+                </li>
+                <li className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-brand-deep-pink text-white rounded-full flex items-center justify-center font-bold font-display shadow-sm text-lg">R</div>
+                  <div>
+                    <p className="font-bold text-gray-800 text-sm">Rina</p>
+                    <p className="text-xs text-gray-500 font-medium">Kurir Express Andalan</p>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+          
+          <div className="bg-gradient-to-br from-pink-50 to-white p-8 rounded-[3rem] border border-pink-200 text-center relative overflow-hidden flex flex-col items-center justify-center h-full">
+             <div className="absolute -right-4 -bottom-4 text-8xl opacity-20 rotate-12">💖</div>
+             <img src="/logo.png" alt="Cheelok Logo" className="w-32 h-32 mx-auto mb-6 object-contain drop-shadow-md" onError={(e) => e.currentTarget.style.display = 'none'} />
+             <h4 className="font-display font-black text-2xl text-gray-800 mb-2">Cheelok_Chill</h4>
+             <p className="text-brand-pink font-bold text-sm mb-6 uppercase tracking-widest">Sejak 2024</p>
+             <p className="text-gray-600 text-sm italic font-medium leading-relaxed max-w-sm mx-auto">"Cilok kita mungkin bentuknya nggak sempurna, tapi rasanya dijamin bikin bahagia."</p>
+          </div>
+        </div>
+      </section>
+
       {/* --- Footer --- */}
       <footer className="bg-white border-t border-pink-100 py-12">
         <div className="max-w-6xl mx-auto px-4 flex flex-col items-center">
-          <div className="flex items-center gap-2 mb-6">
-            <div className="w-8 h-8 bg-brand-pink rounded-full flex items-center justify-center text-white font-bold">C</div>
-            <span className="text-xl font-black italic text-brand-pink">CilokHits<span className="text-brand-orange font-medium">.id</span></span>
+          <div className="flex flex-col items-center justify-center mb-8">
+            <h1 className="text-4xl font-display font-black tracking-tighter text-brand-pink italic drop-shadow-sm uppercase mb-4" style={{ WebkitTextStroke: '1px var(--color-brand-accent)' }}>
+              CHEELOK
+            </h1>
+            <p className="font-handwriting text-3xl text-brand-pink mt-2 -rotate-2">Chill Perutnya, Hemat Harganya 🌸</p>
           </div>
           <div className="flex gap-4 mb-8">
-             <button className="w-10 h-10 rounded-xl bg-pink-50 flex items-center justify-center text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-110">
+             <a href="https://instagram.com/cheelok_chill" target="_blank" rel="noreferrer" className="w-10 h-10 rounded-xl bg-pink-50 flex items-center justify-center text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-110">
                 <Instagram className="w-5 h-5" />
-             </button>
+             </a>
              <a href="https://wa.me/6289691223205" target="_blank" rel="noreferrer" className="w-10 h-10 rounded-xl bg-pink-50 flex items-center justify-center text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-110">
                 <Phone className="w-5 h-5" />
              </a>
-             <button className="w-10 h-10 rounded-xl bg-pink-50 flex items-center justify-center text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-110">
-                <MapPin className="w-5 h-5" />
-             </button>
           </div>
           <p className="font-medium text-gray-400 text-xs tracking-widest font-display text-center">
-            © 2024 CILOKHITS INDONESIA • FOR THE HITS GENERATION
+            © 2024 CHEELOK INDONESIA • CHILL PERUTNYA, HEMAT HARGANYA
           </p>
         </div>
       </footer>
@@ -386,14 +501,14 @@ export default function App() {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-white z-[60] shadow-2xl p-8 flex flex-col border-l border-pink-100"
+              className="fixed right-0 top-0 h-[100dvh] w-full max-w-md bg-white z-[60] shadow-2xl p-4 sm:p-6 md:p-8 flex flex-col border-l border-pink-100"
             >
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-brand-orange text-white rounded-full flex items-center justify-center">
-                    <ShoppingBag className="w-5 h-5" />
+                  <div className="w-10 h-10 bg-brand-pink text-white rounded-full flex items-center justify-center shadow-[0_2px_10px_rgba(255,107,139,0.3)]">
+                     <ShoppingBag className="w-5 h-5" />
                   </div>
-                  <h3 className="text-xl font-display font-black uppercase tracking-widest text-gray-800">Tas Belanja</h3>
+                  <h3 className="text-xl font-display font-black uppercase tracking-widest text-gray-800">Tas Belanja 🌸</h3>
                 </div>
                 <button 
                   onClick={() => setIsCartOpen(false)}
@@ -403,7 +518,7 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-pink-100">
+              <div className="flex-1 overflow-y-auto min-h-0 pr-2 scrollbar-thin scrollbar-thumb-pink-100 pb-4">
                 {cart.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-30">
                     <div className="w-24 h-24 bg-pink-50 rounded-full flex items-center justify-center mb-4">
@@ -413,51 +528,141 @@ export default function App() {
                     <p className="text-xs font-medium italic mt-2 text-brand-pink">Yuk isi bensin nugasmu sekarang~</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    {cart.map(item => (
-                      <div key={item.id} className="flex gap-4 bg-brand-bg p-4 rounded-[2rem] border border-pink-50">
-                        <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-sm flex-shrink-0 border-2 border-white">
-                          <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                  <div>
+                    <div className="space-y-4">
+                      {cart.map(item => (
+                        <div key={item.id} className="flex gap-4 bg-brand-bg p-4 rounded-[2rem] border border-pink-50">
+                          <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-sm flex-shrink-0 border-2 border-white">
+                            <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex justify-between mb-0.5">
+                               <p className="font-display font-black text-gray-700 leading-tight text-sm uppercase">{item.name}</p>
+                               <button onClick={() => removeFromCart(item.id)} className="text-gray-300 hover:text-red-400">
+                                 <X className="w-4 h-4" />
+                               </button>
+                            </div>
+                            <p className="text-[10px] text-gray-500 font-medium mb-1 truncate">{item.kuah}</p>
+                            <p className="text-brand-pink font-black text-sm mb-3">Rp{item.price.toLocaleString('id-ID')}</p>
+                            <div className="flex items-center gap-3">
+                              <button 
+                                onClick={() => updateQuantity(item.id, -1)}
+                                className="w-7 h-7 bg-white border border-pink-100 rounded-lg flex items-center justify-center text-brand-pink active:scale-90 shadow-sm"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="font-black text-xs w-4 text-center">{item.quantity}</span>
+                              <button 
+                                onClick={() => updateQuantity(item.id, 1)}
+                                className="w-7 h-7 bg-white border border-pink-100 rounded-lg flex items-center justify-center text-brand-pink active:scale-90 shadow-sm"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex-1">
-                          <div className="flex justify-between mb-1">
-                             <p className="font-display font-black text-gray-700 leading-tight text-sm uppercase">{item.name}</p>
-                             <button onClick={() => removeFromCart(item.id)} className="text-gray-300 hover:text-red-400">
-                               <X className="w-4 h-4" />
-                             </button>
-                          </div>
-                          <p className="text-brand-pink font-black text-sm mb-3">Rp{item.price.toLocaleString('id-ID')}</p>
-                          <div className="flex items-center gap-3">
-                            <button 
-                              onClick={() => updateQuantity(item.id, -1)}
-                              className="w-7 h-7 bg-white border border-pink-100 rounded-lg flex items-center justify-center text-brand-pink active:scale-90 shadow-sm"
-                            >
-                              <Minus className="w-3 h-3" />
-                            </button>
-                            <span className="font-black text-xs w-4 text-center">{item.quantity}</span>
-                            <button 
-                              onClick={() => updateQuantity(item.id, 1)}
-                              className="w-7 h-7 bg-white border border-pink-100 rounded-lg flex items-center justify-center text-brand-pink active:scale-90 shadow-sm"
-                            >
-                              <Plus className="w-3 h-3" />
-                            </button>
-                          </div>
+                      ))}
+                      
+                      <div className="mt-8 p-4 bg-pink-50 rounded-2xl border border-dashed border-pink-200 relative overflow-hidden">
+                        <div className="absolute -right-2 -bottom-2 text-4xl opacity-20">🎀</div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">📝</span>
+                          <p className="text-xs font-bold text-brand-deep-pink uppercase leading-relaxed">"Sumpah ini cheelok terenak yang pernah aku makan pas nugas! Kuahnya the best!" - Anisa, Mahasiswi 💖</p>
                         </div>
                       </div>
-                    ))}
-                    
-                    <div className="mt-8 p-4 bg-orange-50 rounded-2xl border border-dashed border-orange-300">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl">🎓</span>
-                        <p className="text-[10px] font-bold text-orange-700 uppercase leading-relaxed">Voucher Siswa Hits Terdeteksi! Hemat Rp 5.000 otomatis.</p>
+                    </div>
+
+                    <div className="mt-8 pt-8 border-t border-pink-100 space-y-4">
+                      <h4 className="font-display font-bold text-gray-800 text-sm">Info Pengambilan PO 🌸</h4>
+                      
+                      <div>
+                        <label className="block text-[10px] font-bold text-brand-pink uppercase tracking-widest mb-2">Nama Panggilan</label>
+                        <input 
+                          type="text" 
+                          placeholder="Misal: Siska"
+                          value={customerName}
+                          onChange={(e) => setCustomerName(e.target.value)}
+                          className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm font-medium"
+                        />
                       </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] font-bold text-brand-pink uppercase tracking-widest mb-2">Pilih Hari</label>
+                          <input 
+                            type="date"
+                            value={poDate}
+                            onChange={(e) => setPODate(e.target.value)}
+                            className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm text-gray-700 font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-brand-pink uppercase tracking-widest mb-2">Pilih Jam</label>
+                          <select 
+                            value={poTime}
+                            onChange={(e) => setPOTime(e.target.value)}
+                            className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm font-medium"
+                          >
+                            {PO_TIMES.map(time => <option key={time} value={time}>{time}</option>)}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-brand-pink uppercase tracking-widest mb-2">Metode Pembayaran</label>
+                        <select 
+                          value={paymentMethod}
+                          onChange={(e) => setPaymentMethod(e.target.value)}
+                          className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm font-medium"
+                        >
+                          {PAYMENT_METHODS.map(method => <option key={method} value={method}>{method}</option>)}
+                        </select>
+                      </div>
+
+                      <AnimatePresence>
+                        {paymentMethod === "Bayar Sekarang (Transfer)" && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                            animate={{ opacity: 1, height: 'auto', marginTop: 16 }}
+                            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="p-4 bg-white border border-pink-100 rounded-2xl flex flex-col items-center text-center">
+                              <p className="text-sm font-bold text-gray-800 mb-3">Scan QRIS untuk Bayar</p>
+                              <div className="w-full flex justify-center mb-3">
+                                <img 
+                                  src="/qris.jpg" 
+                                  alt="QRIS Code" 
+                                  className="w-48 h-auto object-contain rounded-xl border border-pink-100 shadow-sm"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                                    if(fallback) fallback.style.display = 'flex';
+                                  }}
+                                />
+                                <div className="hidden w-40 h-40 bg-brand-bg rounded-xl items-center justify-center border-2 border-dashed border-pink-200 flex-col text-center p-2">
+                                  <QrCode className="w-10 h-10 text-brand-pink opacity-50 mb-2" />
+                                  <span className="text-[10px] font-bold text-brand-pink">Upload file QRIS ke folder public/ dengan nama qris.jpg</span>
+                                </div>
+                              </div>
+                              <p className="text-[11px] text-gray-500 font-medium mb-1">Atau transfer manual ke:</p>
+                              <div className="bg-pink-50 w-full py-2 rounded-lg space-y-1">
+                                <p className="text-xs font-bold text-gray-800">BCA: <span className="text-brand-pink">1234567890</span> a.n. Cheelok</p>
+                                <p className="text-xs font-bold text-gray-800">Gopay/Dana: <span className="text-brand-pink">089691223205</span></p>
+                              </div>
+                              <p className="text-[10px] text-gray-400 font-medium mt-3 italic">* Jangan lupa kirim bukti transfer ke mimin ya! 🌸</p>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   </div>
                 )}
               </div>
 
               {cart.length > 0 && (
-                <div className="mt-8 pt-8 border-t border-pink-100 space-y-4">
+                <div className="pt-6 mt-4 border-t border-pink-100 space-y-4 flex-shrink-0 bg-white">
+
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-gray-400 font-bold uppercase tracking-widest">Subtotal</span>
                     <span className="font-bold text-gray-700">Rp{totalPrice.toLocaleString('id-ID')}</span>
@@ -484,18 +689,24 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Floating Cart Button (Mobile) */}
+      {/* Floating Cart Button */}
       {totalItems > 0 && !isCartOpen && (
         <motion.button
-          initial={{ y: 100 }}
-          animate={{ y: 0 }}
+          initial={{ y: 100, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
           onClick={() => setIsCartOpen(true)}
-          className="fixed bottom-8 right-8 z-30 p-5 bg-brand-pink text-white rounded-full shadow-2xl shadow-brand-pink/40 md:hidden"
+          className="fixed bottom-8 right-8 z-30 flex items-center gap-3 p-4 md:px-6 md:py-4 bg-brand-pink hover:bg-brand-deep-pink text-white rounded-full shadow-2xl shadow-brand-pink/40 transition-all hover:scale-105 active:scale-95"
         >
-          <ShoppingBag className="w-7 h-7" />
-          <span className="absolute top-0 right-0 w-6 h-6 bg-white text-brand-pink text-xs font-bold rounded-full flex items-center justify-center border-2 border-brand-pink">
-            {totalItems}
-          </span>
+          <div className="relative">
+            <ShoppingBag className="w-6 h-6 md:w-7 md:h-7" />
+            <span className="absolute -top-2 -right-2 md:hidden w-5 h-5 bg-white text-brand-pink text-[10px] font-bold rounded-full flex items-center justify-center border border-brand-pink">
+              {totalItems}
+            </span>
+          </div>
+          <div className="hidden md:flex flex-col items-start px-2 border-l border-white/30 ml-1">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-pink-100">Tas Belanja ({totalItems})</span>
+            <span className="text-sm font-black">Rp{totalPrice.toLocaleString('id-ID')}</span>
+          </div>
         </motion.button>
       )}
     </div>
