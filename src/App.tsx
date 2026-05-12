@@ -240,10 +240,12 @@ export default function App() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <img 
+            <motion.img 
               src="/logo.png" 
               alt="Cheelok Logo" 
-              className="h-16 md:h-20 w-auto object-contain hidden group-hover:rotate-6 transition-transform duration-300 drop-shadow-md"
+              className="h-16 md:h-20 w-auto object-contain hidden drop-shadow-md"
+              animate={{ y: [0, -5, 0] }}
+              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
               onLoad={(e) => {
                 e.currentTarget.style.display = 'block';
                 const fallback = e.currentTarget.nextElementSibling as HTMLElement;
@@ -465,7 +467,14 @@ export default function App() {
           
           <div className="bg-gradient-to-br from-pink-50 to-white p-8 rounded-[3rem] border border-pink-200 text-center relative overflow-hidden flex flex-col items-center justify-center h-full">
              <div className="absolute -right-4 -bottom-4 text-8xl opacity-20 rotate-12">💖</div>
-             <img src="/logo.png" alt="Cheelok Logo" className="w-32 h-32 mx-auto mb-6 object-contain drop-shadow-md" onError={(e) => e.currentTarget.style.display = 'none'} />
+             <motion.img 
+               src="/logo.png" 
+               alt="Cheelok Logo" 
+               className="w-32 h-32 mx-auto mb-6 object-contain drop-shadow-md" 
+               animate={{ y: [0, -10, 0], rotate: [0, 5, -5, 0] }}
+               transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+               onError={(e) => (e.currentTarget.style.display = 'none')} 
+             />
              <h4 className="font-display font-black text-2xl text-gray-800 mb-2">Cheelok_Chill</h4>
              <p className="text-brand-pink font-bold text-sm mb-6 uppercase tracking-widest">Sejak 2024</p>
              <p className="text-gray-600 text-sm italic font-medium leading-relaxed max-w-sm mx-auto">"Cilok kita mungkin bentuknya nggak sempurna, tapi rasanya dijamin bikin bahagia."</p>
