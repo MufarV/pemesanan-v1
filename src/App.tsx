@@ -357,20 +357,31 @@ export default function App() {
         </div>
       </section>
 
-      {/* --- Campus Info Bar --- */}
-      <div className="h-12 bg-brand-pink flex items-center px-8 gap-10 overflow-hidden mt-12">
-        <div className="flex items-center gap-2 whitespace-nowrap text-white text-[10px] font-bold uppercase tracking-widest">
-          <span className="bg-brand-accent text-brand-text px-2 py-0.5 rounded">INFO</span>
-          GRATIS ONGKIR SE-AREA KAMPUS UNPAD & ITB (MIN 15RB)
-        </div>
-        <div className="flex items-center gap-2 whitespace-nowrap text-white text-[10px] font-bold uppercase tracking-widest">
-          <span className="bg-brand-accent text-brand-text px-2 py-0.5 rounded">OPEN</span>
-          ORDER HARI INI SAMPAI JAM 21.00 WIB
-        </div>
-        <div className="flex items-center gap-2 whitespace-nowrap text-white text-[10px] font-bold uppercase tracking-widest">
-          <span className="bg-brand-accent text-brand-text px-2 py-0.5 rounded">IG</span>
-          @CHEELOK.KAMPUS
-        </div>
+      {/* --- Super Cute Marquee Separator --- */}
+      <div className="w-full mt-12 py-4 bg-brand-pink relative overflow-hidden border-y border-pink-200/30 flex items-center shadow-inner">
+        <div className="absolute inset-0 opacity-10 z-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white to-transparent" />
+        <motion.div 
+          animate={{ x: [0, -1000] }} 
+          transition={{ repeat: Infinity, duration: 20, ease: "linear" }}
+          className="flex gap-6 items-center w-max z-10"
+        >
+          {[...Array(6)].map((_, i) => (
+            <React.Fragment key={i}>
+              <span className="text-white font-display font-black tracking-widest uppercase text-base flex items-center gap-2 drop-shadow-sm">
+                 Cheelok_Chill
+              </span>
+              <span className="text-2xl animate-spin-slow" style={{ animationDuration: '4s' }}>🌸</span>
+              <span className="text-pink-100 font-display font-bold tracking-wider uppercase text-sm">
+                 Teman Nyemil
+              </span>
+              <span className="text-2xl opacity-80 animate-pulse">💖</span>
+              <span className="text-white font-display font-black tracking-widest uppercase text-base drop-shadow-sm">
+                 Estetik & Lumer
+              </span>
+              <span className="text-lg opacity-80 animate-bounce text-brand-orange">✨</span>
+            </React.Fragment>
+          ))}
+        </motion.div>
       </div>
 
       {/* --- Testimonials --- */}
