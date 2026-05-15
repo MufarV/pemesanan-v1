@@ -1,0 +1,50 @@
+{
+  "entities": {
+    "Order": {
+      "title": "Order",
+      "description": "Customer order for cilok",
+      "type": "object",
+      "properties": {
+        "customerName": { "type": "string" },
+        "items": { "type": "string" },
+        "tanggal_po": { "type": "string" },
+        "waktu_po": { "type": "string" },
+        "totalHarga": { "type": "integer" },
+        "totalPcs": { "type": "integer" },
+        "status": { "type": "string", "enum": ["Baru", "Diproses", "Selesai", "Dibatalkan"] },
+        "paymentMethod": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["customerName", "items", "tanggal_po", "waktu_po", "totalHarga", "status"]
+    },
+    "StoreSettings": {
+      "title": "Store Settings",
+      "description": "Global settings for the store",
+      "type": "object",
+      "properties": {
+        "menerimaPesanan": { "type": "boolean" },
+        "openTime": { "type": "string" },
+        "closeTime": { "type": "string" },
+        "whatsappNumber": { "type": "string" },
+        "instagramLink": { "type": "string" },
+        "heroText": { "type": "string" },
+        "bestSellerImage": { "type": "string" },
+        "openPoDates": { "type": "array", "items": { "type": "string" } },
+        "poTimes": { "type": "array", "items": { "type": "string" } },
+        "poLimits": { "type": "array", "items": { "type": "integer" } },
+        "products": { "type": "array" }
+      }
+    }
+  },
+  "firestore": {
+    "pesanan/{orderId}": {
+      "schema": "Order",
+      "description": "Collection of customer orders"
+    },
+    "pengaturan/pengaturan_toko": {
+      "schema": "StoreSettings",
+      "description": "Single document for store settings"
+    }
+  }
+}

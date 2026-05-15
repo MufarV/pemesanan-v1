@@ -25,7 +25,7 @@
 
 @layer base {
   body {
-    @apply bg-brand-bg text-brand-text font-sans;
+    @apply bg-brand-bg text-brand-text font-sans scroll-smooth;
   }
   
   h1, h2, h3, h4 {
@@ -43,5 +43,18 @@
 
 .card-vibrant {
   @apply bg-white p-4 rounded-[32px] border-2 border-transparent hover:border-pink-200 shadow-lg transition-all duration-300;
+}
+
+@utility backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 

@@ -22,6 +22,7 @@ import {
   Clock
 } from 'lucide-react';
 import { cn } from './lib/utils';
+import { PeekingMascot } from './components/PeekingMascot';
 
 // --- Types ---
 interface ProductOption {
@@ -103,6 +104,44 @@ const PAYMENT_METHODS = [
   "Bayar Sekarang (Transfer)"
 ];
 
+// --- Utils ---
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: null, // No auth implementation yet
+      email: null,
+      emailVerified: null,
+      isAnonymous: null,
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
 function SlotStatus({ date, time, storeSettings }: { date: string, time: string, storeSettings: any }) {
   const [slotInfo, setSlotInfo] = useState<string>("Mengecek...");
 
@@ -124,7 +163,13 @@ function SlotStatus({ date, time, storeSettings }: { date: string, time: string,
         }
 
         if (limit > 0) {
-          const querySnapshot = await getDocs(collection(db, "pesanan"));
+          let querySnapshot;
+          try {
+            querySnapshot = await getDocs(collection(db, "pesanan"));
+          } catch (error) {
+            handleFirestoreError(error, OperationType.LIST, "pesanan");
+            return;
+          }
           let count = 0;
           querySnapshot.forEach(d => {
             const df = d.data();
@@ -160,7 +205,13 @@ function POStatusDashboard({ storeSettings, selectedDate, selectedTime, onSelect
       if (!storeSettings) return;
       setLoading(true);
       try {
-        const querySnapshot = await getDocs(collection(db, "pesanan"));
+        let querySnapshot;
+        try {
+          querySnapshot = await getDocs(collection(db, "pesanan"));
+        } catch (error) {
+          handleFirestoreError(error, OperationType.LIST, "pesanan");
+          return;
+        }
         const allOrders = querySnapshot.docs.map(doc => doc.data());
 
         const dates = storeSettings.openPoDates || [];
@@ -323,6 +374,7 @@ function ProductCard({ item, onAdd }: { key?: string, item: Product, onAdd: (pro
 export default function App() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isMascotOut, setIsMascotOut] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [poDate, setPODate] = useState('');
   const [poTime, setPOTime] = useState('');
@@ -356,7 +408,13 @@ export default function App() {
     // For simplicity we use a simple fetch here, but in a real app we'd use onSnapshot with query
     const checkSlots = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, "pesanan"));
+        let querySnapshot;
+        try {
+          querySnapshot = await getDocs(collection(db, "pesanan"));
+        } catch (error) {
+          handleFirestoreError(error, OperationType.LIST, "pesanan");
+          return;
+        }
         let count = 0;
         querySnapshot.forEach(d => {
           const df = d.data();
@@ -394,23 +452,24 @@ export default function App() {
         }
       },
       (error) => {
-        console.error("Gagal mengambil pengaturan toko dari Firebase:", error);
+        handleFirestoreError(error, OperationType.GET, "pengaturan/pengaturan_toko");
       }
     );
     return () => unsub();
   }, []);
 
   const handleLogoClick = () => {
-    const newCiloks = Array.from({ length: 15 }).map((_, i) => ({
+    const isMobile = window.innerWidth < 768;
+    const count = isMobile ? 8 : 15;
+    const newCiloks = Array.from({ length: count }).map((_, i) => ({
       id: Date.now() + i,
       x: Math.random() * 90, // 0 to 90vw
-      size: Math.random() * 40 + 30, // 30px to 70px
+      size: Math.random() * (isMobile ? 25 : 40) + 25, 
       rotation: Math.random() * 360,
-      duration: Math.random() * 2 + 1.5, // 1.5s to 3.5s
+      duration: Math.random() * (isMobile ? 1.5 : 2) + 1.5,
     }));
     setFallingCiloks(prev => [...prev, ...newCiloks]);
     
-    // Cleanup after animation completes
     setTimeout(() => {
       setFallingCiloks(prev => prev.filter(c => !newCiloks.find(nc => nc.id === c.id)));
     }, 4000);
@@ -513,6 +572,7 @@ export default function App() {
     }
 
     // Cek batas pcs!
+    if (storeSettings) {
       let currentTimes: string[] = [];
       let currentLimits: number[] = [];
 
@@ -527,66 +587,30 @@ export default function App() {
       if (currentTimes.length > 0 && currentLimits.length > 0) {
         const idx = currentTimes.indexOf(poTime);
         if (idx !== -1) {
-          let batasMaksimals = currentLimits[idx];
-          // handle both array string or int
-          if (typeof batasMaksimals === 'object' && batasMaksimals !== null) {
-            // just in case it's firestore API object format, though here it should be just the data from SDK
-            batasMaksimals = parseInt((batasMaksimals as any).integerValue || (batasMaksimals as any).doubleValue || (batasMaksimals as any).stringValue || 0);
-          } else {
-            batasMaksimals = parseInt(batasMaksimals as any) || 0;
-          }
+          let batasMaksimals = parseInt(currentLimits[idx] as any) || 0;
 
           if (batasMaksimals > 0) {
             try {
-              const resPesanan = await fetch('https://firestore.googleapis.com/v1/projects/gen-lang-client-0151673203/databases/ai-studio-0f662e5f-e75c-43b6-802f-9de8794d2bcf/documents/pesanan?pageSize=1000');
-              if (resPesanan.ok) {
-                const pesananData = await resPesanan.json();
-                let totalPcsSudahDipesan = 0;
-                if (pesananData.documents) {
-                  for (const doc of pesananData.documents) {
-                    const docFields = doc.fields;
-                    if (!docFields || docFields.status?.stringValue === 'Dibatalkan') continue;
-                    
-                    if (docFields.tanggal_po?.stringValue === poDate && docFields.waktu_po?.stringValue === poTime) {
-                      let orderQty = 0;
-                      if (docFields.items) {
-                        if (docFields.items.arrayValue && docFields.items.arrayValue.values) {
-                          docFields.items.arrayValue.values.forEach((it: any) => {
-                             const obj = it.mapValue?.fields;
-                             if (obj) orderQty += parseInt(obj.quantity?.integerValue || obj.quantity?.stringValue || obj.jumlah?.integerValue || obj.jumlah?.stringValue || '1');
-                          });
-                        } else if (docFields.items.stringValue) {
-                          const parts = docFields.items.stringValue.split(/[\n,;+]+/);
-                          parts.forEach((part: string) => {
-                             if (!part.trim()) return;
-                             let qty = 1;
-                             const matchEnd = part.match(/^(.*?)\s*\(?(?:x\s*(\d+)|(\d+)\s*x)\)?$/i);
-                             if (matchEnd) {
-                                qty = parseInt(matchEnd[2] || matchEnd[3]);
-                             } else {
-                                const matchStart = part.match(/^\(?(?:x\s*(\d+)|(\d+)\s*x)\)?\s*(.*)$/i);
-                                if (matchStart) {
-                                   qty = parseInt(matchStart[1] || matchStart[2]);
-                                }
-                             }
-                             orderQty += qty;
-                          });
-                        }
-                      }
-                      if (orderQty === 0 && docFields.totalPcs) {
-                         orderQty = parseInt(docFields.totalPcs.integerValue || docFields.totalPcs.stringValue || '1');
-                      }
-                      if (orderQty === 0) orderQty = 1;
-                      totalPcsSudahDipesan += orderQty;
-                    }
-                  }
+              let querySnapshot;
+              try {
+                querySnapshot = await getDocs(collection(db, "pesanan"));
+              } catch (error) {
+                handleFirestoreError(error, OperationType.LIST, "pesanan");
+                return;
+              }
+              
+              let totalPcsSudahDipesan = 0;
+              querySnapshot.forEach(doc => {
+                const df = doc.data();
+                if (df && df.status !== 'Dibatalkan' && df.tanggal_po === poDate && df.waktu_po === poTime) {
+                  totalPcsSudahDipesan += parseInt(df.totalPcs || 1);
                 }
+              });
                 
-                if (totalPcsSudahDipesan + totalItems > batasMaksimals) {
-                  const sisa = Math.max(0, batasMaksimals - totalPcsSudahDipesan);
-                  alert(`Maaf, waktu tersebut sudah penuh. Sisa slot: ${sisa} pcs. Mohon pilih waktu lain yang tersedia.`);
-                  return;
-                }
+              if (totalPcsSudahDipesan + totalItems > batasMaksimals) {
+                const sisa = Math.max(0, batasMaksimals - totalPcsSudahDipesan);
+                alert(`Maaf, waktu tersebut sudah penuh. Sisa slot: ${sisa} pcs. Mohon pilih waktu lain yang tersedia.`);
+                return;
               }
             } catch (e) {
               console.error("Gagal cek batas pcs:", e);
@@ -594,41 +618,34 @@ export default function App() {
           }
         }
       }
+    }
 
     try {
       const finalPrice = totalPrice - 5000;
       const itemsString = cart.map(item => `${item.name} (${item.kuah}) x${item.quantity}`).join(', ');
       
       const payload = {
-        fields: {
-          ownerId: { stringValue: "MCggQBt70BeNWsg7mDJooJ9jJ003" },
-          status: { stringValue: "Baru" },
-          createdAt: { stringValue: new Date().toISOString() },
-          customerName: { stringValue: customerName },
-          items: { stringValue: itemsString },
-          tanggal_po: { stringValue: poDate },
-          waktu_po: { stringValue: poTime },
-          totalHarga: { integerValue: finalPrice.toString() },
-          totalPcs: { integerValue: totalItems.toString() },
-          paymentMethod: { stringValue: paymentMethod }
-        }
+        ownerId: "PUBLIC_GUEST",
+        status: "Baru",
+        createdAt: serverTimestamp(),
+        customerName: customerName,
+        items: itemsString,
+        tanggal_po: poDate,
+        waktu_po: poTime,
+        totalHarga: finalPrice,
+        totalPcs: totalItems,
+        paymentMethod: paymentMethod
       };
 
-      const response = await fetch("https://firestore.googleapis.com/v1/projects/gen-lang-client-0151673203/databases/ai-studio-0f662e5f-e75c-43b6-802f-9de8794d2bcf/documents/pesanan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Firebase REST API Error:", response.status, errorText);
-        throw new Error(`Gagal mengirim pesanan: ${response.status} ${errorText}`);
+      let docRef;
+      try {
+        docRef = await addDoc(collection(db, "pesanan"), payload);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, "pesanan");
+        return;
       }
 
-      const result = await response.json();
-      const docId = result.name ? result.name.split('/').pop() : 'UNKNOWN';
-      const orderId = docId.slice(-5).toUpperCase();
+      const orderId = docRef.id.slice(-5).toUpperCase();
 
       alert("Pesanan kamu telah berhasil diproses! 💖");
       
@@ -661,13 +678,25 @@ export default function App() {
           key={cilok.id}
           initial={{ y: -100, x: `${cilok.x}vw`, rotate: 0 }}
           animate={{ y: '120vh', rotate: cilok.rotation }}
-          transition={{ duration: cilok.duration, ease: "easeIn" }}
-          className="fixed pointer-events-none z-50 drop-shadow-xl will-change-transform"
+          transition={{ duration: cilok.duration, ease: "linear" }}
+          className="fixed pointer-events-none z-50 shadow-brand-pink/20 select-none backface-hidden"
           style={{ width: cilok.size, height: cilok.size }}
         >
-          <img src="/logo.png" alt="cilok jatuh" className="w-full h-full object-contain" />
+          <img src="/logo.png" alt="" className="w-full h-full object-contain pointer-events-none" />
         </motion.div>
       ))}
+
+      {/* --- Peeking Mascot --- */}
+      <motion.div
+        initial={{ x: -100, opacity: 0 }}
+        animate={{ x: isMascotOut ? 0 : "-60%", opacity: 1 }}
+        whileHover={{ x: 0 }}
+        onClick={() => setIsMascotOut(!isMascotOut)}
+        transition={{ type: 'spring', damping: 20, stiffness: 100, delay: 1 }}
+        className="fixed left-0 top-[60%] -translate-y-1/2 z-30 w-24 md:w-36 pointer-events-auto cursor-pointer"
+      >
+        <PeekingMascot className="w-full h-auto drop-shadow-xl hover:drop-shadow-2xl transition-all" />
+      </motion.div>
 
       {/* --- Store Status Banner --- */}
       {storeSettings && (() => {
@@ -739,7 +768,7 @@ export default function App() {
               <a href="#menu" className="hidden md:inline-block text-brand-pink md:border-b-2 md:border-brand-pink px-2 py-1 shrink-0">Menu</a>
               <a href="#testimonials" className="hover:text-brand-pink transition-colors text-gray-400 md:text-gray-800 px-2 py-1 shrink-0">Testimoni</a>
               <a href="#about" className="hover:text-brand-pink transition-colors text-gray-400 md:text-gray-800 px-2 py-1 shrink-0">Tentang</a>
-              <a href={`https://wa.me/62${storeSettings?.whatsappNumber || '89691223205'}`} target="_blank" rel="noreferrer" className="hover:text-brand-pink transition-colors text-gray-400 md:text-gray-800 px-2 py-1 shrink-0">Kritik</a>
+              <a href={`https://wa.me/62${storeSettings?.whatsappNumber || '89691223205'}`} target="_blank" rel="noreferrer" className="hover:text-brand-pink transition-colors text-gray-400 md:text-gray-800 px-2 py-1 shrink-0">Kritik & Saran</a>
             </nav>
             
             <button 
@@ -883,11 +912,11 @@ export default function App() {
       <div className="w-full mt-12 py-4 bg-brand-pink relative overflow-hidden border-y border-pink-200/30 flex items-center shadow-inner">
         <div className="absolute inset-0 opacity-10 z-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white to-transparent" />
         <motion.div 
-          animate={{ x: [0, -1000] }} 
-          transition={{ repeat: Infinity, duration: 20, ease: "linear" }}
-          className="flex gap-6 items-center w-max z-10 will-change-transform"
+          animate={{ x: ["0%", "-50%"] }} 
+          transition={{ repeat: Infinity, duration: 30, ease: "linear" }}
+          className="flex gap-12 items-center w-max z-10 whitespace-nowrap backface-hidden"
         >
-          {[...Array(6)].map((_, i) => (
+          {[...Array(12)].map((_, i) => (
             <React.Fragment key={i}>
               <span className="text-white font-display font-black tracking-widest uppercase text-base flex items-center gap-2 drop-shadow-sm">
                  Cheelok_Chill
