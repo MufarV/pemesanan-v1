@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { doc, onSnapshot, collection, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
+import { db } from './lib/firebase';
 import { 
   ShoppingBag, 
   Plus, 
@@ -13,17 +15,26 @@ import {
   Heart,
   Flame,
   Zap,
-  QrCode
+  QrCode,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { cn } from './lib/utils';
 
 // --- Types ---
+interface ProductOption {
+  name: string;
+  image: string;
+  price: number;
+}
+
 interface Product {
   id: string;
   name: string;
   price: number;
   description: string;
   image: string;
+  options?: ProductOption[];
 }
 
 interface CartItem {
@@ -90,8 +101,19 @@ const PAYMENT_METHODS = [
   "Bayar Sekarang (Transfer)"
 ];
 
-function ProductCard({ item, onAdd }: { item: Product, onAdd: (product: Product, kuah: string) => void }) {
-  const [kuah, setKuah] = useState(KUAH_OPTIONS[0]);
+function ProductCard({ item, onAdd }: { key?: string, item: Product, onAdd: (product: Product, kuah: string) => void }) {
+  const options = item.options && item.options.length > 0 ? item.options : KUAH_OPTIONS.map(opt => ({ name: opt, price: Number(item.price), image: item.image }));
+  const [selectedName, setSelectedName] = useState(options[0].name);
+
+  // Sync state if item changes
+  useEffect(() => {
+    const newOptions = item.options && item.options.length > 0 ? item.options : KUAH_OPTIONS.map(opt => ({ name: opt, price: Number(item.price), image: item.image }));
+    if (!newOptions.find(o => o.name === selectedName)) {
+      setSelectedName(newOptions[0].name);
+    }
+  }, [item]);
+
+  const selectedOption = options.find(o => o.name === selectedName) || options[0];
 
   return (
     <motion.div
@@ -103,7 +125,7 @@ function ProductCard({ item, onAdd }: { item: Product, onAdd: (product: Product,
     >
       <div className="w-40 h-40 bg-pink-50 rounded-full mb-6 flex items-center justify-center relative overflow-hidden group-hover:scale-105 transition-transform duration-500 border border-pink-100 shrink-0">
         <img 
-          src={item.image} 
+          src={selectedOption.image || item.image} 
           alt={item.name}
           className="w-full h-full object-cover opacity-90"
         />
@@ -115,22 +137,22 @@ function ProductCard({ item, onAdd }: { item: Product, onAdd: (product: Product,
       <div className="w-full mt-auto mb-4 text-left">
         <label className="block text-[10px] font-bold text-brand-pink uppercase tracking-widest mb-1.5 ml-1">Pilihan Kuah/Saos</label>
         <select 
-          value={kuah}
-          onChange={(e) => setKuah(e.target.value)}
+          value={selectedName}
+          onChange={(e) => setSelectedName(e.target.value)}
           className="w-full text-xs font-bold text-gray-700 p-2.5 rounded-xl bg-brand-bg border border-pink-100 focus:outline-none focus:ring-2 focus:ring-brand-pink appearance-none cursor-pointer text-center"
         >
-          {KUAH_OPTIONS.map(opt => (
-            <option key={opt} value={opt}>{opt}</option>
+          {options.map(opt => (
+            <option key={opt.name} value={opt.name}>{opt.name}</option>
           ))}
         </select>
       </div>
       
       <div className="flex items-center justify-between w-full pt-4 border-t border-pink-100">
         <span className="font-black text-xl text-brand-pink tracking-tight">
-          Rp{item.price.toLocaleString('id-ID')}
+          Rp{selectedOption.price.toLocaleString('id-ID')}
         </span>
         <button 
-          onClick={() => onAdd(item, kuah)}
+          onClick={() => onAdd({ ...item, price: selectedOption.price, image: selectedOption.image || item.image }, selectedName)}
           className="w-10 h-10 bg-brand-pink hover:bg-brand-deep-pink rounded-xl text-white font-bold text-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all font-display"
         >
           +
@@ -148,6 +170,47 @@ export default function App() {
   const [poTime, setPOTime] = useState(PO_TIMES[0]);
   const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHODS[0]);
   const [fallingCiloks, setFallingCiloks] = useState<FallingCilok[]>([]);
+  const [storeSettings, setStoreSettings] = useState<any>(null);
+  
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const toggleAudio = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play().catch(e => console.error("Audio play failed", e));
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      doc(db, "pengaturan", "pengaturan_toko"), 
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setStoreSettings(data);
+          if (data.openPoDates && data.openPoDates.length > 0) {
+            const initialDate = data.openPoDates[0];
+            setPODate(initialDate);
+            let initialTimes = data.poDatesConfig?.[initialDate]?.times || data.poTimes || [];
+            if (initialTimes.length > 0) {
+              setPOTime(initialTimes[0]);
+            }
+          } else if (data.poTimes && data.poTimes.length > 0) {
+            setPOTime(data.poTimes[0]);
+          }
+        }
+      },
+      (error) => {
+        console.error("Gagal mengambil pengaturan toko dari Firebase:", error);
+      }
+    );
+    return () => unsub();
+  }, []);
 
   const handleLogoClick = () => {
     const newCiloks = Array.from({ length: 15 }).map((_, i) => ({
@@ -167,6 +230,20 @@ export default function App() {
 
   // --- Handlers ---
   const addToCart = (product: Product, kuah: string) => {
+    if (storeSettings) {
+      const isBuka = storeSettings.menerimaPesanan !== false;
+      const openTime = storeSettings.openTime || "00:00";
+      const closeTime = storeSettings.closeTime || "23:59";
+      const now = new Date();
+      const currentTime = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+      let isOpenHour = openTime <= closeTime ? (currentTime >= openTime && currentTime <= closeTime) : (currentTime >= openTime || currentTime <= closeTime);
+      if (!isBuka || !isOpenHour) {
+        alert("Mohon maaf, pemesanan online saat ini sedang tutup.\n" + 
+             (!isBuka ? "Toko sedang tidak menerima pesanan." : ("Jam operasional: " + openTime + " - " + closeTime)));
+        return;
+      }
+    }
+
     const cartId = `${product.id}-${kuah}`;
     setCart(prev => {
       const existing = prev.find(item => item.id === cartId);
@@ -196,21 +273,172 @@ export default function App() {
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
   const totalPrice = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (!customerName.trim()) {
       alert('Tulis nama panggilan kamu dulu ya, Bestie! 💖');
       return;
     }
 
-    const message = `Halo Kak! Saya mau pesan CHEELOK:\n\n` +
-      `Nama: ${customerName}\n` +
-      `Ambil PO: ${poDate} - ${poTime}\n` +
-      `Metode Pembayaran: ${paymentMethod}\n\n` +
-      `Pesanan:\n` +
-      cart.map(item => `- ${item.name} (${item.kuah}) x${item.quantity}`).join('\n') +
-      `\n\nTotal Bayar: Rp${(totalPrice - 5000).toLocaleString('id-ID')}\n`;
-    
-    window.open(`https://wa.me/6289691223205?text=${encodeURIComponent(message)}`, '_blank');
+    if (storeSettings) {
+      const isBuka = storeSettings.menerimaPesanan !== false;
+      const openTime = storeSettings.openTime || "00:00";
+      const closeTime = storeSettings.closeTime || "23:59";
+      
+      const now = new Date();
+      const currentTime = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+      
+      let isOpenHour = false;
+      if (openTime <= closeTime) {
+        isOpenHour = currentTime >= openTime && currentTime <= closeTime;
+      } else {
+        isOpenHour = currentTime >= openTime || currentTime <= closeTime;
+      }
+      
+      if (!isBuka || !isOpenHour) {
+        alert("Mohon maaf, pemesanan online saat ini sedang tutup.\n" + 
+             (!isBuka ? "Toko sedang tidak menerima pesanan." : ("Jam operasional: " + openTime + " - " + closeTime)));
+        return;
+      }
+    }
+
+    // Cek batas pcs!
+      let currentTimes: string[] = [];
+      let currentLimits: number[] = [];
+
+      if (storeSettings.poDatesConfig && storeSettings.poDatesConfig[poDate]) {
+        currentTimes = storeSettings.poDatesConfig[poDate].times || [];
+        currentLimits = storeSettings.poDatesConfig[poDate].limits || [];
+      } else if (storeSettings.poTimes && storeSettings.poLimits) {
+        currentTimes = storeSettings.poTimes || [];
+        currentLimits = storeSettings.poLimits || [];
+      }
+
+      if (currentTimes.length > 0 && currentLimits.length > 0) {
+        const idx = currentTimes.indexOf(poTime);
+        if (idx !== -1) {
+          let batasMaksimals = currentLimits[idx];
+          // handle both array string or int
+          if (typeof batasMaksimals === 'object' && batasMaksimals !== null) {
+            // just in case it's firestore API object format, though here it should be just the data from SDK
+            batasMaksimals = parseInt((batasMaksimals as any).integerValue || (batasMaksimals as any).doubleValue || (batasMaksimals as any).stringValue || 0);
+          } else {
+            batasMaksimals = parseInt(batasMaksimals as any) || 0;
+          }
+
+          if (batasMaksimals > 0) {
+            try {
+              const resPesanan = await fetch('https://firestore.googleapis.com/v1/projects/gen-lang-client-0151673203/databases/ai-studio-0f662e5f-e75c-43b6-802f-9de8794d2bcf/documents/pesanan?pageSize=1000');
+              if (resPesanan.ok) {
+                const pesananData = await resPesanan.json();
+                let totalPcsSudahDipesan = 0;
+                if (pesananData.documents) {
+                  for (const doc of pesananData.documents) {
+                    const docFields = doc.fields;
+                    if (!docFields || docFields.status?.stringValue === 'Dibatalkan') continue;
+                    
+                    if (docFields.tanggal_po?.stringValue === poDate && docFields.waktu_po?.stringValue === poTime) {
+                      let orderQty = 0;
+                      if (docFields.items) {
+                        if (docFields.items.arrayValue && docFields.items.arrayValue.values) {
+                          docFields.items.arrayValue.values.forEach((it: any) => {
+                             const obj = it.mapValue?.fields;
+                             if (obj) orderQty += parseInt(obj.quantity?.integerValue || obj.quantity?.stringValue || obj.jumlah?.integerValue || obj.jumlah?.stringValue || '1');
+                          });
+                        } else if (docFields.items.stringValue) {
+                          const parts = docFields.items.stringValue.split(/[\n,;+]+/);
+                          parts.forEach((part: string) => {
+                             if (!part.trim()) return;
+                             let qty = 1;
+                             const matchEnd = part.match(/^(.*?)\s*\(?(?:x\s*(\d+)|(\d+)\s*x)\)?$/i);
+                             if (matchEnd) {
+                                qty = parseInt(matchEnd[2] || matchEnd[3]);
+                             } else {
+                                const matchStart = part.match(/^\(?(?:x\s*(\d+)|(\d+)\s*x)\)?\s*(.*)$/i);
+                                if (matchStart) {
+                                   qty = parseInt(matchStart[1] || matchStart[2]);
+                                }
+                             }
+                             orderQty += qty;
+                          });
+                        }
+                      }
+                      if (orderQty === 0 && docFields.totalPcs) {
+                         orderQty = parseInt(docFields.totalPcs.integerValue || docFields.totalPcs.stringValue || '1');
+                      }
+                      if (orderQty === 0) orderQty = 1;
+                      totalPcsSudahDipesan += orderQty;
+                    }
+                  }
+                }
+                
+                if (totalPcsSudahDipesan + totalItems > batasMaksimals) {
+                  const sisa = Math.max(0, batasMaksimals - totalPcsSudahDipesan);
+                  alert(`Maaf, waktu tersebut sudah penuh. Sisa slot: ${sisa} pcs. Mohon pilih waktu lain yang tersedia.`);
+                  return;
+                }
+              }
+            } catch (e) {
+              console.error("Gagal cek batas pcs:", e);
+            }
+          }
+        }
+      }
+
+    try {
+      const finalPrice = totalPrice - 5000;
+      const itemsString = cart.map(item => `${item.name} (${item.kuah}) x${item.quantity}`).join(', ');
+      
+      const payload = {
+        fields: {
+          ownerId: { stringValue: "eBRihF6EyxfvMOlNSoPV6wSHzny2" },
+          status: { stringValue: "Baru" },
+          createdAt: { stringValue: new Date().toISOString() },
+          customerName: { stringValue: customerName },
+          items: { stringValue: itemsString },
+          tanggal_po: { stringValue: poDate },
+          waktu_po: { stringValue: poTime },
+          totalHarga: { integerValue: finalPrice.toString() },
+          totalPcs: { integerValue: totalItems.toString() },
+          paymentMethod: { stringValue: paymentMethod }
+        }
+      };
+
+      const response = await fetch("https://firestore.googleapis.com/v1/projects/gen-lang-client-0151673203/databases/ai-studio-0f662e5f-e75c-43b6-802f-9de8794d2bcf/documents/pesanan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Firebase REST API Error:", response.status, errorText);
+        throw new Error(`Gagal mengirim pesanan: ${response.status} ${errorText}`);
+      }
+
+      const result = await response.json();
+      const docId = result.name ? result.name.split('/').pop() : 'UNKNOWN';
+      const orderId = docId.slice(-5).toUpperCase();
+
+      alert("Pesanan kamu telah berhasil diproses! 💖");
+      
+      const message = `Halo Kak! Saya mau pesan CHEELOK :\n\n` +
+        `Order ID: #${orderId}\n` +
+        `Nama: ${customerName}\n` +
+        `Ambil PO: ${poDate} - ${poTime}\n` +
+        `Metode Pembayaran: ${paymentMethod}\n\n` +
+        `Pesanan:\n` +
+        cart.map(item => `- ${item.name} (${item.kuah}) x${item.quantity}`).join('\n') +
+        `\n\nTotal Bayar: Rp${finalPrice.toLocaleString('id-ID')}\n`;
+      
+      window.open(`https://wa.me/6289691223205?text=${encodeURIComponent(message)}`, '_blank');
+      
+      setCart([]);
+      setIsCartOpen(false);
+      setCustomerName('');
+    } catch (error) {
+      console.error("Gagal membuat pesanan:", error);
+      alert("Ups, terjadi kesalahan saat memesan!");
+    }
   };
 
   return (
@@ -229,8 +457,40 @@ export default function App() {
         </motion.div>
       ))}
 
+      {/* --- Store Status Banner --- */}
+      {storeSettings && (() => {
+        const isBuka = storeSettings.menerimaPesanan !== false;
+        const openTime = storeSettings.openTime || "00:00";
+        const closeTime = storeSettings.closeTime || "23:59";
+        const now = new Date();
+        const currentTime = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+        let isOpenHour = false;
+        if (openTime <= closeTime) {
+          isOpenHour = currentTime >= openTime && currentTime <= closeTime;
+        } else {
+          isOpenHour = currentTime >= openTime || currentTime <= closeTime;
+        }
+        if (!isBuka || !isOpenHour) {
+          return (
+            <div className="bg-red-50 border-b border-red-100 text-red-600 px-4 py-3 text-center font-bold text-sm sticky top-0 z-50">
+              ⚠️ Maaf, Toko Sedang Tutup ({!isBuka ? "Tidak Terima Order" : `Buka ${openTime}-${closeTime}`}).
+            </div>
+          );
+        }
+        return null;
+      })()}
+
       {/* --- Sticky Header --- */}
-      <header className="sticky top-0 z-40 bg-white border-b border-pink-100 shadow-sm">
+      <header className={cn("sticky z-40 bg-white border-b border-pink-100 shadow-sm", (() => {
+        if (!storeSettings) return "top-0";
+        const isBuka = storeSettings.menerimaPesanan !== false;
+        const openTime = storeSettings.openTime || "00:00";
+        const closeTime = storeSettings.closeTime || "23:59";
+        const now = new Date();
+        const currentTime = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+        let isOpenHour = openTime <= closeTime ? (currentTime >= openTime && currentTime <= closeTime) : (currentTime >= openTime || currentTime <= closeTime);
+        return (!isBuka || !isOpenHour) ? "top-[44px]" : "top-0";
+      })())}>
         <div className="max-w-6xl mx-auto px-4 h-24 flex items-center justify-between">
           <motion.div 
             initial={{ opacity: 0, x: -20 }}
@@ -267,11 +527,28 @@ export default function App() {
               <a href="#menu" className="text-brand-pink font-semibold border-b-2 border-brand-pink pb-1">Menu</a>
               <a href="#testimonials" className="hover:text-brand-pink transition-colors">Testimoni</a>
               <a href="#about" className="hover:text-brand-pink transition-colors">Tentang Kami</a>
+              <a href="https://wa.me/6289691223205" target="_blank" rel="noreferrer" className="hover:text-brand-pink transition-colors">Kritik & Saran</a>
             </nav>
             
+            <button 
+              onClick={toggleAudio}
+              className="px-3 py-2 md:px-4 md:py-2.5 rounded-full border-2 border-pink-100 bg-pink-50 text-brand-pink hover:bg-brand-pink hover:text-white transition-all shadow-sm flex items-center gap-2"
+              aria-label="Toggle Background Music"
+              title="Toggle Music"
+            >
+              {isPlaying ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+              <span className="text-xs font-bold uppercase tracking-widest">Song</span>
+            </button>
           </div>
         </div>
       </header>
+
+      {/* --- Background Audio --- */}
+      <audio 
+        ref={audioRef} 
+        src="https://www.image2url.com/r2/default/audio/1778738447768-22a170dc-effb-4bbb-bc20-14ba2092094d.mp3" 
+        loop
+      />
 
       {/* --- Hero Section --- */}
       <section className="relative px-4 py-16 md:py-24 max-w-7xl mx-auto">
@@ -300,7 +577,7 @@ export default function App() {
               Spesial buat bestie-bestie kampus ✨
             </p>
             <p className="text-gray-500 text-lg mb-8 max-w-md font-medium leading-relaxed">
-              Jajanan cilok estetik dengan bumbu kacang lumer. Bikin mood nugas & gibah naik, kantong tetap aman 💖
+              {storeSettings?.heroDescription || "Jajanan cilok estetik dengan bumbu kacang lumer. Bikin mood nugas & gibah naik, kantong tetap aman 💖"}
             </p>
 
             <div className="flex flex-wrap gap-4">
@@ -318,7 +595,7 @@ export default function App() {
           >
             <div className="aspect-square rounded-[3rem] overflow-hidden shadow-2xl relative z-10 border-8 border-white bg-white">
               <img 
-                src="https://images.unsplash.com/photo-1541544741938-0af808871cc0" 
+                src={storeSettings?.heroImage || "https://images.unsplash.com/photo-1541544741938-0af808871cc0"} 
                 alt="Delicious Cilok" 
                 className="w-full h-full object-cover"
               />
@@ -327,15 +604,6 @@ export default function App() {
             <div className="absolute -top-6 -right-6 w-32 h-32 bg-pink-100 rounded-full -z-10 animate-pulse" />
             <div className="absolute -top-4 -left-4 text-4xl animate-bounce" style={{ animationDuration: '3s' }}>✨</div>
             <div className="absolute bottom-10 -right-8 text-5xl">🌸</div>
-            <div className="absolute -bottom-10 -left-10 bg-white/90 backdrop-blur-sm p-5 rounded-[2rem] shadow-xl z-20 flex items-center gap-4 border-2 border-pink-100">
-               <div className="w-12 h-12 bg-pink-50 rounded-2xl flex items-center justify-center text-brand-pink">
-                  <Flame className="w-6 h-6 fill-current" />
-               </div>
-               <div>
-                  <p className="text-[10px] font-black text-brand-orange uppercase tracking-widest">BEST SELLER 💖</p>
-                  <p className="font-display font-bold text-base text-gray-800">Cilok Bumbu Kacang</p>
-               </div>
-            </div>
           </motion.div>
         </div>
       </section>
@@ -352,7 +620,33 @@ export default function App() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           <AnimatePresence mode="popLayout">
-            {ISI_OPTIONS.map((product) => (
+            {(storeSettings?.products && storeSettings.products.length > 0
+                ? storeSettings.products.map((prod: any, index: number) => {
+                    const isObj = typeof prod === 'object' && prod !== null;
+                    const prodName = isObj ? prod.name : prod;
+                    const prodImage = isObj && prod.image ? prod.image : 'https://images.unsplash.com/photo-1548345680-f5475aa5114a?auto=format&fit=crop&q=80&w=800';
+                    const prodPrice = isObj && prod.price ? Number(prod.price) : 15000;
+                    
+                    const safeOptions = isObj && Array.isArray(prod.options) ? prod.options.map((opt: any) => ({
+                      ...opt,
+                      price: Number(opt.price || 0)
+                    })) : undefined;
+
+                    const existing = ISI_OPTIONS.find(p => p.name === prodName);
+                    if (existing) {
+                      return { ...existing, image: isObj && prod.image ? prod.image : existing.image, price: isObj && prod.price ? Number(prod.price) : existing.price, options: safeOptions || existing.options };
+                    }
+                    return {
+                      id: `dynamic-${index}`,
+                      name: prodName || 'Produk Baru',
+                      price: prodPrice,
+                      description: 'Menu spesial Cheelok yang bikin nagih! 💖',
+                      image: prodImage,
+                      options: safeOptions
+                    };
+                  })
+                : ISI_OPTIONS
+            ).map((product: Product) => (
               <ProductCard key={product.id} item={product} onAdd={addToCart} />
             ))}
           </AnimatePresence>
@@ -396,7 +690,7 @@ export default function App() {
              <p className="text-gray-400 text-sm font-medium">Bukan endorse, aseli dari hati 🌸</p>
         </div>
         <div className="grid md:grid-cols-3 gap-8">
-          {TESTIMONIALS.map((t, i) => (
+          {(storeSettings?.reviews && storeSettings.reviews.length > 0 ? storeSettings.reviews : TESTIMONIALS).map((t: any, i: number) => (
             <motion.div 
               key={i}
               whileHover={{ y: -5 }}
@@ -405,14 +699,14 @@ export default function App() {
               <div className="flex items-center gap-1 text-brand-pink mb-4">
                 {[1,2,3,4,5].map(star => <Star key={star} className="w-3 h-3 fill-current" />)}
               </div>
-              <p className="text-gray-600 mb-8 italic text-sm font-medium leading-relaxed">"{t.comment}"</p>
+              <p className="text-gray-600 mb-8 italic text-sm font-medium leading-relaxed">"{t.comment || t.text}"</p>
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 bg-brand-pink rounded-full overflow-hidden shadow-md">
-                  <img src={`https://i.pravatar.cc/100?u=${t.name}`} alt={t.name} />
+                  <img src={t.image || `https://i.pravatar.cc/100?u=${t.name}`} alt={t.name} />
                 </div>
                 <div>
                   <p className="font-display font-bold text-gray-800 text-sm leading-none mb-1">{t.name}</p>
-                  <p className="text-[10px] text-brand-pink font-bold uppercase tracking-tighter">{t.role}</p>
+                  <p className="text-[10px] text-brand-pink font-bold uppercase tracking-tighter">{t.role || 'Pelanggan Setia'}</p>
                 </div>
               </div>
             </motion.div>
@@ -429,39 +723,12 @@ export default function App() {
         
         <div className="grid md:grid-cols-2 gap-8 items-center max-w-5xl mx-auto">
           <div className="space-y-6">
-            <div className="bg-pink-50 p-6 rounded-[2rem] border border-pink-100 relative">
+            <div className="bg-pink-50 p-6 rounded-[2rem] border border-pink-100 relative h-full">
               <div className="absolute top-4 right-4 text-3xl opacity-50">👩‍🍳</div>
               <h3 className="font-display font-bold text-xl text-gray-800 mb-2">Tujuan Bisnis</h3>
               <p className="text-gray-600 text-sm leading-relaxed font-medium">
                 Cheelok hadir untuk menjadi "teman nyemil" utama semua orang, terutama para mahasiswa. Kami ingin menyajikan cilok berkualitas dengan bumbu dan isian yang ga pelit, bikin perut kenyang dan mood naik lagi pas lagi beraktivitas.
               </p>
-            </div>
-            
-            <div className="bg-white p-6 rounded-[2rem] border border-pink-100 shadow-sm">
-              <h3 className="font-display font-bold text-xl text-gray-800 mb-4">Tim Kami</h3>
-              <ul className="space-y-4">
-                <li className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-brand-pink text-white rounded-full flex items-center justify-center font-bold font-display shadow-sm text-lg">S</div>
-                  <div>
-                    <p className="font-bold text-gray-800 text-sm">Siska</p>
-                    <p className="text-xs text-gray-500 font-medium">CEO & Master Chef Cilok</p>
-                  </div>
-                </li>
-                <li className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-brand-orange text-white rounded-full flex items-center justify-center font-bold font-display shadow-sm text-lg">A</div>
-                  <div>
-                    <p className="font-bold text-gray-800 text-sm">Andi</p>
-                    <p className="text-xs text-gray-500 font-medium">Marketing & Sosmed</p>
-                  </div>
-                </li>
-                <li className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-brand-deep-pink text-white rounded-full flex items-center justify-center font-bold font-display shadow-sm text-lg">R</div>
-                  <div>
-                    <p className="font-bold text-gray-800 text-sm">Rina</p>
-                    <p className="text-xs text-gray-500 font-medium">Kurir Express Andalan</p>
-                  </div>
-                </li>
-              </ul>
             </div>
           </div>
           
@@ -476,7 +743,7 @@ export default function App() {
                onError={(e) => (e.currentTarget.style.display = 'none')} 
              />
              <h4 className="font-display font-black text-2xl text-gray-800 mb-2">Cheelok_Chill</h4>
-             <p className="text-brand-pink font-bold text-sm mb-6 uppercase tracking-widest">Sejak 2024</p>
+             <p className="text-brand-pink font-bold text-sm mb-6 uppercase tracking-widest">Sejak 2026</p>
              <p className="text-gray-600 text-sm italic font-medium leading-relaxed max-w-sm mx-auto">"Cilok kita mungkin bentuknya nggak sempurna, tapi rasanya dijamin bikin bahagia."</p>
           </div>
         </div>
@@ -492,15 +759,15 @@ export default function App() {
             <p className="font-handwriting text-3xl text-brand-pink mt-2 -rotate-2">Chill Perutnya, Hemat Harganya 🌸</p>
           </div>
           <div className="flex gap-4 mb-8">
-             <a href="https://instagram.com/cheelok_chill" target="_blank" rel="noreferrer" className="w-10 h-10 rounded-xl bg-pink-50 flex items-center justify-center text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-110">
-                <Instagram className="w-5 h-5" />
+             <a href="https://instagram.com/cheelok_chill" target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-pink-50 flex items-center justify-center gap-2 text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-105 font-bold text-sm tracking-wider uppercase">
+                <Instagram className="w-5 h-5" /> Instagram
              </a>
-             <a href="https://wa.me/6289691223205" target="_blank" rel="noreferrer" className="w-10 h-10 rounded-xl bg-pink-50 flex items-center justify-center text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-110">
-                <Phone className="w-5 h-5" />
+             <a href="https://wa.me/6289691223205" target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-pink-50 flex items-center justify-center gap-2 text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-105 font-bold text-sm tracking-wider uppercase">
+                <Phone className="w-5 h-5" /> WhatsApp
              </a>
           </div>
           <p className="font-medium text-gray-400 text-xs tracking-widest font-display text-center">
-            © 2024 CHEELOK INDONESIA • CHILL PERUTNYA, HEMAT HARGANYA
+            © 2026 CHEELOK INDONESIA • CHILL PERUTNYA, HEMAT HARGANYA
           </p>
         </div>
       </footer>
@@ -609,22 +876,60 @@ export default function App() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-[10px] font-bold text-brand-pink uppercase tracking-widest mb-2">Pilih Hari</label>
-                          <input 
-                            type="date"
-                            value={poDate}
-                            onChange={(e) => setPODate(e.target.value)}
-                            className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm text-gray-700 font-medium"
-                          />
+                          {storeSettings?.openPoDates && storeSettings.openPoDates.length > 0 ? (
+                            <select 
+                              value={poDate}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setPODate(val);
+                                let newTimes = storeSettings?.poDatesConfig?.[val]?.times || storeSettings?.poTimes || [];
+                                if (newTimes.length === 0) newTimes = PO_TIMES;
+                                if (newTimes.length > 0 && !newTimes.includes(poTime)) {
+                                  setPOTime(newTimes[0]);
+                                }
+                              }}
+                              className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm font-medium"
+                            >
+                              {storeSettings.openPoDates.map((dateStr: string) => (
+                                <option key={dateStr} value={dateStr}>
+                                  {new Date(dateStr).toLocaleDateString('id-ID', { 
+                                    weekday: 'long', day: 'numeric', month: 'long' 
+                                  })}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input 
+                              type="date"
+                              value={poDate}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setPODate(val);
+                                let newTimes = storeSettings?.poDatesConfig?.[val]?.times || storeSettings?.poTimes || [];
+                                if (newTimes.length === 0) newTimes = PO_TIMES;
+                                if (newTimes.length > 0 && !newTimes.includes(poTime)) {
+                                  setPOTime(newTimes[0]);
+                                }
+                              }}
+                              className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm text-gray-700 font-medium"
+                            />
+                          )}
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold text-brand-pink uppercase tracking-widest mb-2">Pilih Jam</label>
-                          <select 
-                            value={poTime}
-                            onChange={(e) => setPOTime(e.target.value)}
-                            className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm font-medium"
-                          >
-                            {PO_TIMES.map(time => <option key={time} value={time}>{time}</option>)}
-                          </select>
+                            <select 
+                              value={poTime}
+                              onChange={(e) => setPOTime(e.target.value)}
+                              className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm font-medium"
+                            >
+                              {(() => {
+                                let times = (storeSettings?.poTimes && storeSettings.poTimes.length > 0) ? storeSettings.poTimes : PO_TIMES;
+                                if (storeSettings?.poDatesConfig && storeSettings.poDatesConfig[poDate] && storeSettings.poDatesConfig[poDate].times) {
+                                  times = storeSettings.poDatesConfig[poDate].times;
+                                }
+                                return times.map((time: string) => <option key={time} value={time}>{time}</option>);
+                              })()}
+                            </select>
                         </div>
                       </div>
 
@@ -666,9 +971,9 @@ export default function App() {
                                 </div>
                               </div>
                               <p className="text-[11px] text-gray-500 font-medium mb-1">Atau transfer manual ke:</p>
-                              <div className="bg-pink-50 w-full py-2 rounded-lg space-y-1">
-                                <p className="text-xs font-bold text-gray-800">BCA: <span className="text-brand-pink">1234567890</span> a.n. Cheelok</p>
-                                <p className="text-xs font-bold text-gray-800">Gopay/Dana: <span className="text-brand-pink">089691223205</span></p>
+                              <div className="bg-pink-50 w-full py-4 rounded-lg space-y-1">
+                                <p className="text-xl font-bold text-gray-800">Aplikasi DANA</p>
+                                <p className="text-lg font-black text-brand-pink tracking-wider">081379104922</p>
                               </div>
                               <p className="text-[10px] text-gray-400 font-medium mt-3 italic">* Jangan lupa kirim bukti transfer ke mimin ya! 🌸</p>
                             </div>
