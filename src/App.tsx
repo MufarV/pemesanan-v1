@@ -17,7 +17,9 @@ import {
   Zap,
   QrCode,
   Volume2,
-  VolumeX
+  VolumeX,
+  Calendar,
+  Clock
 } from 'lucide-react';
 import { cn } from './lib/utils';
 
@@ -101,6 +103,164 @@ const PAYMENT_METHODS = [
   "Bayar Sekarang (Transfer)"
 ];
 
+function SlotStatus({ date, time, storeSettings }: { date: string, time: string, storeSettings: any }) {
+  const [slotInfo, setSlotInfo] = useState<string>("Mengecek...");
+
+  useEffect(() => {
+    async function fetchSlots() {
+      if (!date || !time) {
+        setSlotInfo("Pilih Sesi...");
+        return;
+      }
+      try {
+        let limit = 0;
+        if (storeSettings?.poDatesConfig && storeSettings.poDatesConfig[date]) {
+          const config = storeSettings.poDatesConfig[date];
+          const idx = config.times?.indexOf(time);
+          if (idx !== -1 && config.limits) limit = parseInt(config.limits[idx] || 0);
+        } else if (storeSettings?.poTimes && storeSettings.poLimits) {
+          const idx = storeSettings.poTimes.indexOf(time);
+          if (idx !== -1) limit = parseInt(storeSettings.poLimits[idx] || 0);
+        }
+
+        if (limit > 0) {
+          const querySnapshot = await getDocs(collection(db, "pesanan"));
+          let count = 0;
+          querySnapshot.forEach(d => {
+            const df = d.data();
+            if (df && df.status !== 'Dibatalkan' && df.tanggal_po === date && df.waktu_po === time) {
+              let orderQty = 0;
+              if (df.items) {
+                 // Estimation logic based on totalPcs or items parsing
+                 orderQty = parseInt(df.totalPcs || 1);
+              }
+              count += orderQty;
+            }
+          });
+          setSlotInfo(`Sisa: ${Math.max(0, limit - count)} pcs`);
+        } else {
+          setSlotInfo("Slot Tersedia");
+        }
+      } catch (e) {
+        setSlotInfo("Tersedia");
+      }
+    }
+    fetchSlots();
+  }, [date, time, storeSettings]);
+
+  return <span className="font-display font-black text-brand-pink text-sm">{slotInfo}</span>;
+}
+
+function POStatusDashboard({ storeSettings, selectedDate, selectedTime, onSelect }: { storeSettings: any, selectedDate: string, selectedTime: string, onSelect: (date: string, time: string) => void }) {
+  const [sessionData, setSessionData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchAllSlots() {
+      if (!storeSettings) return;
+      setLoading(true);
+      try {
+        const querySnapshot = await getDocs(collection(db, "pesanan"));
+        const allOrders = querySnapshot.docs.map(doc => doc.data());
+
+        const dates = storeSettings.openPoDates || [];
+        const result = dates.map((date: string) => {
+          const config = storeSettings.poDatesConfig?.[date];
+          const times = config?.times || storeSettings.poTimes || [];
+          const limits = config?.limits || storeSettings.poLimits || [];
+
+          const sessions = times.map((time: string, idx: number) => {
+            const limit = parseInt(limits[idx] || 0);
+            const count = allOrders
+              .filter(o => o.status !== 'Dibatalkan' && o.tanggal_po === date && o.waktu_po === time)
+              .reduce((sum, o) => sum + parseInt(o.totalPcs || 1), 0);
+            return { time, limit, count, remaining: Math.max(0, limit - count) };
+          });
+
+          return { date, sessions };
+        });
+        setSessionData(result);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchAllSlots();
+  }, [storeSettings]);
+
+  if (!storeSettings || loading) return null;
+
+  return (
+    <div id="po-status" className="max-w-6xl mx-auto px-4 py-12 scroll-mt-20">
+      <div className="bg-white rounded-[3rem] p-8 md:p-12 shadow-soft border-2 border-pink-50 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-pink-50/50 rounded-full -mr-16 -mt-16" />
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-2xl bg-brand-pink flex items-center justify-center text-white shadow-lg shadow-brand-pink/30">
+              <Calendar className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-xl font-display font-black text-gray-800 leading-none">Slot PO Tersedia</h3>
+              <p className="text-xs font-medium text-gray-400 mt-1 uppercase tracking-widest italic">Pilih kuota dulu yukk☺️</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {sessionData.map((item, idx) => (
+              <div key={idx} className="bg-brand-bg rounded-3xl p-6 border border-pink-100/50">
+                <div className="flex items-center justify-between mb-4 border-b border-pink-100 pb-3">
+                  <span className="font-display font-black text-brand-pink">{item.date}</span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Sesi Waktu</span>
+                </div>
+                <div className="space-y-3">
+                  {item.sessions.map((s: any, sidx: number) => {
+                    const isSelected = selectedDate === item.date && selectedTime === s.time;
+                    return (
+                      <div 
+                        key={sidx} 
+                        onClick={() => s.remaining > 0 || s.limit === 0 ? onSelect(item.date, s.time) : null}
+                        className={`flex items-center justify-between group p-2 rounded-xl transition-all cursor-pointer ${isSelected ? 'bg-pink-100/50 border border-brand-pink/30' : 'hover:bg-white/50 border border-transparent'}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Clock className={`w-3.5 h-3.5 ${isSelected ? 'text-brand-pink' : 'text-gray-400'}`} />
+                          <span className={`text-sm font-bold ${isSelected ? 'text-brand-pink' : 'text-gray-600'}`}>{s.time}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {s.limit > 0 ? (
+                             <div className="flex items-center gap-1.5">
+                               <div className={`w-2 h-2 rounded-full ${s.remaining > 5 ? 'bg-green-400' : s.remaining > 0 ? 'bg-orange-400' : 'bg-red-400'} ${s.remaining > 0 ? 'animate-pulse' : ''}`} />
+                               <span className={`text-xs font-black ${s.remaining === 0 ? 'text-red-500' : 'text-brand-pink'}`}>
+                                 {s.remaining === 0 ? 'FULL' : `${s.remaining} Pcs`}
+                               </span>
+                             </div>
+                          ) : (
+                            <span className="text-[10px] font-bold text-green-500 uppercase">Available</span>
+                          )}
+                          
+                          {isSelected ? (
+                            <div className="w-5 h-5 rounded-full bg-brand-pink flex items-center justify-center text-white">
+                              <Zap className="w-3 h-3 fill-current" />
+                            </div>
+                          ) : (
+                            <div className={`text-[10px] font-bold uppercase tracking-tighter px-2 py-0.5 rounded-lg border ${s.remaining === 0 && s.limit > 0 ? 'border-gray-200 text-gray-300 opacity-50 cursor-not-allowed' : 'border-brand-pink/30 text-brand-pink hover:bg-brand-pink hover:text-white transition-colors'}`}>
+                              {s.remaining === 0 && s.limit > 0 ? 'Full' : 'Pilih'}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProductCard({ item, onAdd }: { key?: string, item: Product, onAdd: (product: Product, kuah: string) => void }) {
   const options = item.options && item.options.length > 0 ? item.options : KUAH_OPTIONS.map(opt => ({ name: opt, price: Number(item.price), image: item.image }));
   const [selectedName, setSelectedName] = useState(options[0].name);
@@ -117,10 +277,8 @@ function ProductCard({ item, onAdd }: { key?: string, item: Product, onAdd: (pro
 
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
       className="card-vibrant group flex flex-col items-center text-center p-6 border border-pink-50"
     >
       <div className="w-40 h-40 bg-pink-50 rounded-full mb-6 flex items-center justify-center relative overflow-hidden group-hover:scale-105 transition-transform duration-500 border border-pink-100 shrink-0">
@@ -166,14 +324,53 @@ export default function App() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [customerName, setCustomerName] = useState('');
-  const [poDate, setPODate] = useState(new Date().toISOString().split('T')[0]);
-  const [poTime, setPOTime] = useState(PO_TIMES[0]);
+  const [poDate, setPODate] = useState('');
+  const [poTime, setPOTime] = useState('');
   const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHODS[0]);
   const [fallingCiloks, setFallingCiloks] = useState<FallingCilok[]>([]);
   const [storeSettings, setStoreSettings] = useState<any>(null);
+  const [remainingSlotsCount, setRemainingSlotsCount] = useState<number | null>(null);
   
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    if (!storeSettings) return;
+
+    let limit = 0;
+    if (storeSettings?.poDatesConfig && storeSettings.poDatesConfig[poDate]) {
+      const config = storeSettings.poDatesConfig[poDate];
+      const idx = config.times?.indexOf(poTime);
+      if (idx !== -1 && config.limits) limit = parseInt(config.limits[idx] || 0);
+    } else if (storeSettings?.poTimes && storeSettings.poLimits) {
+      const idx = storeSettings.poTimes.indexOf(poTime);
+      if (idx !== -1) limit = parseInt(storeSettings.poLimits[idx] || 0);
+    }
+
+    if (limit <= 0) {
+      setRemainingSlotsCount(null);
+      return;
+    }
+
+    // Monitor orders for this slot
+    // For simplicity we use a simple fetch here, but in a real app we'd use onSnapshot with query
+    const checkSlots = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "pesanan"));
+        let count = 0;
+        querySnapshot.forEach(d => {
+          const df = d.data();
+          if (df && df.status !== 'Dibatalkan' && df.tanggal_po === poDate && df.waktu_po === poTime) {
+            count += parseInt(df.totalPcs || 1);
+          }
+        });
+        setRemainingSlotsCount(Math.max(0, limit - count));
+      } catch (e) {
+        console.error("Error checking slots:", e);
+      }
+    };
+    checkSlots();
+  }, [poDate, poTime, storeSettings]);
 
   const toggleAudio = () => {
     if (audioRef.current) {
@@ -193,16 +390,7 @@ export default function App() {
         if (docSnap.exists()) {
           const data = docSnap.data();
           setStoreSettings(data);
-          if (data.openPoDates && data.openPoDates.length > 0) {
-            const initialDate = data.openPoDates[0];
-            setPODate(initialDate);
-            let initialTimes = data.poDatesConfig?.[initialDate]?.times || data.poTimes || [];
-            if (initialTimes.length > 0) {
-              setPOTime(initialTimes[0]);
-            }
-          } else if (data.poTimes && data.poTimes.length > 0) {
-            setPOTime(data.poTimes[0]);
-          }
+          // Don't auto-set to force user selection as requested
         }
       },
       (error) => {
@@ -230,6 +418,12 @@ export default function App() {
 
   // --- Handlers ---
   const addToCart = (product: Product, kuah: string) => {
+    if (!poDate || !poTime) {
+      alert("pilih tanggal dan sesi dulu ya besstiee");
+      document.getElementById('po-status')?.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+
     if (storeSettings) {
       const isBuka = storeSettings.menerimaPesanan !== false;
       const openTime = storeSettings.openTime || "00:00";
@@ -247,6 +441,13 @@ export default function App() {
     const cartId = `${product.id}-${kuah}`;
     setCart(prev => {
       const existing = prev.find(item => item.id === cartId);
+      const totalItemsInCart = prev.reduce((sum, i) => sum + i.quantity, 0);
+
+      if (remainingSlotsCount !== null && totalItemsInCart >= remainingSlotsCount) {
+        alert(`Maaf Bestie, slot untuk waktu ini sisa ${remainingSlotsCount} pcs lagi. Kurangi pesananmu ya! 💖`);
+        return prev;
+      }
+
       if (existing) {
         return prev.map(item => 
           item.id === cartId ? { ...item, quantity: item.quantity + 1 } : item
@@ -261,13 +462,23 @@ export default function App() {
   };
 
   const updateQuantity = (id: string, delta: number) => {
-    setCart(prev => prev.map(item => {
-      if (item.id === id) {
-        const newQty = Math.max(1, item.quantity + delta);
-        return { ...item, quantity: newQty };
+    setCart(prev => {
+      if (delta > 0 && remainingSlotsCount !== null) {
+        const currentTotal = prev.reduce((sum, i) => sum + i.quantity, 0);
+        if (currentTotal >= remainingSlotsCount) {
+          alert(`Ups! Slot untuk jam ini tinggal ${remainingSlotsCount} pcs, Bestie. 💖`);
+          return prev;
+        }
       }
-      return item;
-    }));
+
+      return prev.map(item => {
+        if (item.id === id) {
+          const newQty = Math.max(1, item.quantity + delta);
+          return { ...item, quantity: newQty };
+        }
+        return item;
+      });
+    });
   };
 
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -390,7 +601,7 @@ export default function App() {
       
       const payload = {
         fields: {
-          ownerId: { stringValue: "eBRihF6EyxfvMOlNSoPV6wSHzny2" },
+          ownerId: { stringValue: "MCggQBt70BeNWsg7mDJooJ9jJ003" },
           status: { stringValue: "Baru" },
           createdAt: { stringValue: new Date().toISOString() },
           customerName: { stringValue: customerName },
@@ -430,7 +641,8 @@ export default function App() {
         cart.map(item => `- ${item.name} (${item.kuah}) x${item.quantity}`).join('\n') +
         `\n\nTotal Bayar: Rp${finalPrice.toLocaleString('id-ID')}\n`;
       
-      window.open(`https://wa.me/6289691223205?text=${encodeURIComponent(message)}`, '_blank');
+      const waNumber = storeSettings?.whatsappNumber || '89691223205';
+      window.open(`https://wa.me/62${waNumber}?text=${encodeURIComponent(message)}`, '_blank');
       
       setCart([]);
       setIsCartOpen(false);
@@ -447,10 +659,10 @@ export default function App() {
       {fallingCiloks.map(cilok => (
         <motion.div
           key={cilok.id}
-          initial={{ top: -100, x: `${cilok.x}vw`, rotate: 0 }}
-          animate={{ top: '120vh', rotate: cilok.rotation }}
+          initial={{ y: -100, x: `${cilok.x}vw`, rotate: 0 }}
+          animate={{ y: '120vh', rotate: cilok.rotation }}
           transition={{ duration: cilok.duration, ease: "easeIn" }}
-          className="fixed pointer-events-none z-50 drop-shadow-xl"
+          className="fixed pointer-events-none z-50 drop-shadow-xl will-change-transform"
           style={{ width: cilok.size, height: cilok.size }}
         >
           <img src="/logo.png" alt="cilok jatuh" className="w-full h-full object-contain" />
@@ -516,18 +728,18 @@ export default function App() {
               <div className="w-10 h-10 bg-brand-pink rounded-full flex items-center justify-center text-white font-bold text-xl border-2 border-brand-accent shadow-sm overflow-hidden flex-shrink-0">
                 <span className="font-display font-black text-brand-accent" style={{ WebkitTextStroke: '0.5px white' }}>C</span>
               </div>
-              <h1 className="text-2xl font-display font-black tracking-tighter text-brand-pink italic drop-shadow-sm uppercase" style={{ WebkitTextStroke: '1px var(--color-brand-accent)' }}>
+              <h1 className="text-lg md:text-2xl font-display font-black tracking-tighter text-brand-pink italic drop-shadow-sm uppercase hidden sm:block" style={{ WebkitTextStroke: '1px var(--color-brand-accent)' }}>
                 CHEELOK
               </h1>
             </div>
           </motion.div>
-
-          <div className="flex items-center gap-6">
-            <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
-              <a href="#menu" className="text-brand-pink font-semibold border-b-2 border-brand-pink pb-1">Menu</a>
-              <a href="#testimonials" className="hover:text-brand-pink transition-colors">Testimoni</a>
-              <a href="#about" className="hover:text-brand-pink transition-colors">Tentang Kami</a>
-              <a href="https://wa.me/6289691223205" target="_blank" rel="noreferrer" className="hover:text-brand-pink transition-colors">Kritik & Saran</a>
+ 
+          <div className="flex-1 flex justify-end items-center gap-1 md:gap-6 min-w-0">
+            <nav className="flex items-center gap-1 md:gap-4 text-[9px] md:text-sm font-black md:font-medium uppercase md:capitalize overflow-x-auto no-scrollbar whitespace-nowrap py-4 max-w-full">
+              <a href="#menu" className="hidden md:inline-block text-brand-pink md:border-b-2 md:border-brand-pink px-2 py-1 shrink-0">Menu</a>
+              <a href="#testimonials" className="hover:text-brand-pink transition-colors text-gray-400 md:text-gray-800 px-2 py-1 shrink-0">Testimoni</a>
+              <a href="#about" className="hover:text-brand-pink transition-colors text-gray-400 md:text-gray-800 px-2 py-1 shrink-0">Tentang</a>
+              <a href={`https://wa.me/62${storeSettings?.whatsappNumber || '89691223205'}`} target="_blank" rel="noreferrer" className="hover:text-brand-pink transition-colors text-gray-400 md:text-gray-800 px-2 py-1 shrink-0">Kritik</a>
             </nav>
             
             <button 
@@ -551,9 +763,9 @@ export default function App() {
       />
 
       {/* --- Hero Section --- */}
-      <section className="relative px-4 py-16 md:py-24 max-w-7xl mx-auto">
+      <section className="relative px-4 py-16 md:py-24 max-w-7xl mx-auto overflow-hidden">
         <div className="absolute top-0 right-0 -z-10 opacity-10 pointer-events-none">
-          <div className="w-[500px] h-[500px] bg-brand-pink rounded-full blur-[100px]" />
+          <div className="w-[300px] h-[300px] md:w-[500px] md:h-[500px] bg-brand-pink rounded-full blur-[60px] md:blur-[100px]" />
         </div>
         
         <div className="grid md:grid-cols-2 gap-12 items-center">
@@ -577,12 +789,18 @@ export default function App() {
               Spesial buat bestie-bestie kampus ✨
             </p>
             <p className="text-gray-500 text-lg mb-8 max-w-md font-medium leading-relaxed">
-              {storeSettings?.heroDescription || "Jajanan cilok estetik dengan bumbu kacang lumer. Bikin mood nugas & gibah naik, kantong tetap aman 💖"}
+              {storeSettings?.heroText || storeSettings?.heroDescription || "Jajanan cilok estetik dengan bumbu kacang lumer. Bikin mood nugas & gibah naik, kantong tetap aman 💖"}
             </p>
 
             <div className="flex flex-wrap gap-4">
               <a href="#menu" className="px-8 py-4 bg-brand-pink text-white rounded-full font-black shadow-xl shadow-brand-pink/30 hover:bg-brand-deep-pink transition-all flex items-center gap-2 border-b-4 border-brand-deep-pink active:border-b-0 active:translate-y-1">
                 JAJAN SEKARANG <ChevronRight className="w-5 h-5 stroke-[3px]" />
+              </a>
+              <a 
+                href="#po-status" 
+                className="md:hidden w-full sm:w-auto px-6 py-3 bg-white text-brand-pink rounded-full font-bold text-sm border-2 border-pink-100 flex items-center justify-center gap-2 active:scale-95 transition-all"
+              >
+                <Calendar className="w-4 h-4" /> cek slot PO dulu yuk bestchill
               </a>
             </div>
           </motion.div>
@@ -595,7 +813,7 @@ export default function App() {
           >
             <div className="aspect-square rounded-[3rem] overflow-hidden shadow-2xl relative z-10 border-8 border-white bg-white">
               <img 
-                src={storeSettings?.heroImage || "https://images.unsplash.com/photo-1541544741938-0af808871cc0"} 
+                src={storeSettings?.bestSellerImage || storeSettings?.heroImage || "https://images.unsplash.com/photo-1541544741938-0af808871cc0"} 
                 alt="Delicious Cilok" 
                 className="w-full h-full object-cover"
               />
@@ -608,8 +826,18 @@ export default function App() {
         </div>
       </section>
 
+      <POStatusDashboard 
+        storeSettings={storeSettings} 
+        selectedDate={poDate}
+        selectedTime={poTime}
+        onSelect={(date, time) => {
+          setPODate(date);
+          setPOTime(time);
+        }}
+      />
+
       {/* --- Menu Section --- */}
-      <section id="menu" className="max-w-6xl mx-auto px-4 py-20">
+      <section id="menu" className="max-w-6xl mx-auto px-4 py-20 relative">
         <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-6 relative">
           <div className="absolute -top-10 -left-4 text-4xl opacity-50 rotate-12">🍓</div>
           <div>
@@ -619,37 +847,35 @@ export default function App() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          <AnimatePresence mode="popLayout">
-            {(storeSettings?.products && storeSettings.products.length > 0
-                ? storeSettings.products.map((prod: any, index: number) => {
-                    const isObj = typeof prod === 'object' && prod !== null;
-                    const prodName = isObj ? prod.name : prod;
-                    const prodImage = isObj && prod.image ? prod.image : 'https://images.unsplash.com/photo-1548345680-f5475aa5114a?auto=format&fit=crop&q=80&w=800';
-                    const prodPrice = isObj && prod.price ? Number(prod.price) : 15000;
-                    
-                    const safeOptions = isObj && Array.isArray(prod.options) ? prod.options.map((opt: any) => ({
-                      ...opt,
-                      price: Number(opt.price || 0)
-                    })) : undefined;
+          {(storeSettings?.products && storeSettings.products.length > 0
+              ? storeSettings.products.map((prod: any, index: number) => {
+                  const isObj = typeof prod === 'object' && prod !== null;
+                  const prodName = isObj ? prod.name : prod;
+                  const prodImage = isObj && prod.image ? prod.image : 'https://images.unsplash.com/photo-1548345680-f5475aa5114a?auto=format&fit=crop&q=80&w=800';
+                  const prodPrice = isObj && prod.price ? Number(prod.price) : 15000;
+                  
+                  const safeOptions = isObj && Array.isArray(prod.options) ? prod.options.map((opt: any) => ({
+                    ...opt,
+                    price: Number(opt.price || 0)
+                  })) : undefined;
 
-                    const existing = ISI_OPTIONS.find(p => p.name === prodName);
-                    if (existing) {
-                      return { ...existing, image: isObj && prod.image ? prod.image : existing.image, price: isObj && prod.price ? Number(prod.price) : existing.price, options: safeOptions || existing.options };
-                    }
-                    return {
-                      id: `dynamic-${index}`,
-                      name: prodName || 'Produk Baru',
-                      price: prodPrice,
-                      description: 'Menu spesial Cheelok yang bikin nagih! 💖',
-                      image: prodImage,
-                      options: safeOptions
-                    };
-                  })
-                : ISI_OPTIONS
-            ).map((product: Product) => (
-              <ProductCard key={product.id} item={product} onAdd={addToCart} />
-            ))}
-          </AnimatePresence>
+                  const existing = ISI_OPTIONS.find(p => p.name === prodName);
+                  if (existing) {
+                    return { ...existing, image: isObj && prod.image ? prod.image : existing.image, price: isObj && prod.price ? Number(prod.price) : existing.price, options: safeOptions || existing.options };
+                  }
+                  return {
+                    id: `dynamic-${index}`,
+                    name: prodName || 'Produk Baru',
+                    price: prodPrice,
+                    description: 'Menu spesial Cheelok yang bikin nagih! 💖',
+                    image: prodImage,
+                    options: safeOptions
+                  };
+                })
+              : ISI_OPTIONS
+          ).map((product: Product) => (
+            <ProductCard key={product.id} item={product} onAdd={addToCart} />
+          ))}
         </div>
       </section>
 
@@ -659,7 +885,7 @@ export default function App() {
         <motion.div 
           animate={{ x: [0, -1000] }} 
           transition={{ repeat: Infinity, duration: 20, ease: "linear" }}
-          className="flex gap-6 items-center w-max z-10"
+          className="flex gap-6 items-center w-max z-10 will-change-transform"
         >
           {[...Array(6)].map((_, i) => (
             <React.Fragment key={i}>
@@ -702,10 +928,10 @@ export default function App() {
               <p className="text-gray-600 mb-8 italic text-sm font-medium leading-relaxed">"{t.comment || t.text}"</p>
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 bg-brand-pink rounded-full overflow-hidden shadow-md">
-                  <img src={t.image || `https://i.pravatar.cc/100?u=${t.name}`} alt={t.name} />
+                  <img src={t.image || `https://i.pravatar.cc/100?u=${t.name || 'user'}`} alt={t.name || 'User'} />
                 </div>
                 <div>
-                  <p className="font-display font-bold text-gray-800 text-sm leading-none mb-1">{t.name}</p>
+                  <p className="font-display font-bold text-gray-800 text-sm leading-none mb-1">{t.name || 'Bestie Cheelok'}</p>
                   <p className="text-[10px] text-brand-pink font-bold uppercase tracking-tighter">{t.role || 'Pelanggan Setia'}</p>
                 </div>
               </div>
@@ -759,10 +985,10 @@ export default function App() {
             <p className="font-handwriting text-3xl text-brand-pink mt-2 -rotate-2">Chill Perutnya, Hemat Harganya 🌸</p>
           </div>
           <div className="flex gap-4 mb-8">
-             <a href="https://instagram.com/cheelok_chill" target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-pink-50 flex items-center justify-center gap-2 text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-105 font-bold text-sm tracking-wider uppercase">
+             <a href={`https://instagram.com/${storeSettings?.instagramLink || 'cheelok_chill'}`} target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-pink-50 flex items-center justify-center gap-2 text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-105 font-bold text-sm tracking-wider uppercase">
                 <Instagram className="w-5 h-5" /> Instagram
              </a>
-             <a href="https://wa.me/6289691223205" target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-pink-50 flex items-center justify-center gap-2 text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-105 font-bold text-sm tracking-wider uppercase">
+             <a href={`https://wa.me/62${storeSettings?.whatsappNumber || '89691223205'}`} target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-pink-50 flex items-center justify-center gap-2 text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-105 font-bold text-sm tracking-wider uppercase">
                 <Phone className="w-5 h-5" /> WhatsApp
              </a>
           </div>
@@ -806,6 +1032,93 @@ export default function App() {
               </div>
 
               <div className="flex-1 overflow-y-auto min-h-0 pr-2 scrollbar-thin scrollbar-thumb-pink-100 pb-4">
+                <div className="mb-6 space-y-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Calendar className="w-4 h-4 text-brand-pink" />
+                    <h4 className="font-display font-bold text-gray-800 text-sm">Cek & Pilih Sesi PO 🌸</h4>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-brand-pink uppercase tracking-widest mb-2">Pilih Hari</label>
+                      {storeSettings?.openPoDates && storeSettings.openPoDates.length > 0 ? (
+                        <select 
+                          value={poDate}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setPODate(val);
+                            let newTimes = storeSettings?.poDatesConfig?.[val]?.times || storeSettings?.poTimes || [];
+                            if (newTimes.length === 0) newTimes = PO_TIMES;
+                            if (newTimes.length > 0 && !newTimes.includes(poTime)) {
+                              setPOTime(newTimes[0]);
+                            }
+                          }}
+                          className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm font-medium"
+                        >
+                          <option value="">-- Pilih Tanggal --</option>
+                          {storeSettings.openPoDates.map((dateStr: string) => (
+                            <option key={dateStr} value={dateStr}>
+                              {new Date(dateStr).toLocaleDateString('id-ID', { 
+                                weekday: 'long', day: 'numeric', month: 'long' 
+                              })}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input 
+                          type="date"
+                          value={poDate}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setPODate(val);
+                            let newTimes = storeSettings?.poDatesConfig?.[val]?.times || storeSettings?.poTimes || [];
+                            if (newTimes.length === 0) newTimes = PO_TIMES;
+                            if (newTimes.length > 0 && !newTimes.includes(poTime)) {
+                              setPOTime(newTimes[0]);
+                            }
+                          }}
+                          className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm text-gray-700 font-medium"
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-brand-pink uppercase tracking-widest mb-2">Pilih Jam</label>
+                        <select 
+                          value={poTime}
+                          onChange={(e) => setPOTime(e.target.value)}
+                          className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm font-medium"
+                        >
+                          <option value="">-- Pilih Jam --</option>
+                          {(() => {
+                            let times = (storeSettings?.poTimes && storeSettings.poTimes.length > 0) ? storeSettings.poTimes : PO_TIMES;
+                            if (storeSettings?.poDatesConfig && storeSettings.poDatesConfig[poDate] && storeSettings.poDatesConfig[poDate].times) {
+                              times = storeSettings.poDatesConfig[poDate].times;
+                            }
+                            return times.map((time: string) => <option key={time} value={time}>{time}</option>);
+                          })()}
+                        </select>
+                    </div>
+                  </div>
+
+                  {/* --- Real-time Slot Info --- */}
+                  <div className="p-4 bg-brand-bg border border-pink-100 rounded-2xl">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-pink-50 flex items-center justify-center text-brand-pink">
+                          <Zap className="w-4 h-4 fill-current" />
+                        </div>
+                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
+                          STATUS SLOT PO DI SESI YANG ANDA PILIH
+                        </span>
+                      </div>
+                      <SlotStatus date={poDate} time={poTime} storeSettings={storeSettings} />
+                    </div>
+                    <p className="text-[10px] text-brand-orange font-medium italic opacity-80 leading-tight border-t border-pink-50 pt-2 mt-2">
+                      * Pilih/tambah sesi lain jika anda ingin menambah jumlah pembelian per pcs
+                    </p>
+                  </div>
+                </div>
+
                 {cart.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-30">
                     <div className="w-24 h-24 bg-pink-50 rounded-full flex items-center justify-center mb-4">
@@ -860,7 +1173,7 @@ export default function App() {
                     </div>
 
                     <div className="mt-8 pt-8 border-t border-pink-100 space-y-4">
-                      <h4 className="font-display font-bold text-gray-800 text-sm">Info Pengambilan PO 🌸</h4>
+                      <h4 className="font-display font-bold text-gray-800 text-sm">Lengkapi Data Customer 🌸</h4>
                       
                       <div>
                         <label className="block text-[10px] font-bold text-brand-pink uppercase tracking-widest mb-2">Nama Panggilan</label>
@@ -872,115 +1185,55 @@ export default function App() {
                           className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm font-medium"
                         />
                       </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-[10px] font-bold text-brand-pink uppercase tracking-widest mb-2">Pilih Hari</label>
-                          {storeSettings?.openPoDates && storeSettings.openPoDates.length > 0 ? (
-                            <select 
-                              value={poDate}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setPODate(val);
-                                let newTimes = storeSettings?.poDatesConfig?.[val]?.times || storeSettings?.poTimes || [];
-                                if (newTimes.length === 0) newTimes = PO_TIMES;
-                                if (newTimes.length > 0 && !newTimes.includes(poTime)) {
-                                  setPOTime(newTimes[0]);
-                                }
-                              }}
-                              className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm font-medium"
-                            >
-                              {storeSettings.openPoDates.map((dateStr: string) => (
-                                <option key={dateStr} value={dateStr}>
-                                  {new Date(dateStr).toLocaleDateString('id-ID', { 
-                                    weekday: 'long', day: 'numeric', month: 'long' 
-                                  })}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input 
-                              type="date"
-                              value={poDate}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setPODate(val);
-                                let newTimes = storeSettings?.poDatesConfig?.[val]?.times || storeSettings?.poTimes || [];
-                                if (newTimes.length === 0) newTimes = PO_TIMES;
-                                if (newTimes.length > 0 && !newTimes.includes(poTime)) {
-                                  setPOTime(newTimes[0]);
-                                }
-                              }}
-                              className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm text-gray-700 font-medium"
-                            />
-                          )}
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-brand-pink uppercase tracking-widest mb-2">Pilih Jam</label>
-                            <select 
-                              value={poTime}
-                              onChange={(e) => setPOTime(e.target.value)}
-                              className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm font-medium"
-                            >
-                              {(() => {
-                                let times = (storeSettings?.poTimes && storeSettings.poTimes.length > 0) ? storeSettings.poTimes : PO_TIMES;
-                                if (storeSettings?.poDatesConfig && storeSettings.poDatesConfig[poDate] && storeSettings.poDatesConfig[poDate].times) {
-                                  times = storeSettings.poDatesConfig[poDate].times;
-                                }
-                                return times.map((time: string) => <option key={time} value={time}>{time}</option>);
-                              })()}
-                            </select>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-brand-pink uppercase tracking-widest mb-2">Metode Pembayaran</label>
-                        <select 
-                          value={paymentMethod}
-                          onChange={(e) => setPaymentMethod(e.target.value)}
-                          className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm font-medium"
-                        >
-                          {PAYMENT_METHODS.map(method => <option key={method} value={method}>{method}</option>)}
-                        </select>
-                      </div>
-
-                      <AnimatePresence>
-                        {paymentMethod === "Bayar Sekarang (Transfer)" && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                            animate={{ opacity: 1, height: 'auto', marginTop: 16 }}
-                            exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                            className="overflow-hidden"
-                          >
-                            <div className="p-4 bg-white border border-pink-100 rounded-2xl flex flex-col items-center text-center">
-                              <p className="text-sm font-bold text-gray-800 mb-3">Scan QRIS untuk Bayar</p>
-                              <div className="w-full flex justify-center mb-3">
-                                <img 
-                                  src="/qris.jpg" 
-                                  alt="QRIS Code" 
-                                  className="w-48 h-auto object-contain rounded-xl border border-pink-100 shadow-sm"
-                                  onError={(e) => {
-                                    e.currentTarget.style.display = 'none';
-                                    const fallback = e.currentTarget.nextElementSibling as HTMLElement;
-                                    if(fallback) fallback.style.display = 'flex';
-                                  }}
-                                />
-                                <div className="hidden w-40 h-40 bg-brand-bg rounded-xl items-center justify-center border-2 border-dashed border-pink-200 flex-col text-center p-2">
-                                  <QrCode className="w-10 h-10 text-brand-pink opacity-50 mb-2" />
-                                  <span className="text-[10px] font-bold text-brand-pink">Upload file QRIS ke folder public/ dengan nama qris.jpg</span>
-                                </div>
-                              </div>
-                              <p className="text-[11px] text-gray-500 font-medium mb-1">Atau transfer manual ke:</p>
-                              <div className="bg-pink-50 w-full py-4 rounded-lg space-y-1">
-                                <p className="text-xl font-bold text-gray-800">Aplikasi DANA</p>
-                                <p className="text-lg font-black text-brand-pink tracking-wider">081379104922</p>
-                              </div>
-                              <p className="text-[10px] text-gray-400 font-medium mt-3 italic">* Jangan lupa kirim bukti transfer ke mimin ya! 🌸</p>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
                     </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-brand-pink uppercase tracking-widest mb-2">Metode Pembayaran</label>
+                      <select 
+                        value={paymentMethod}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                        className="w-full px-4 py-3 bg-brand-bg border border-pink-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-pink text-sm font-medium"
+                      >
+                        {PAYMENT_METHODS.map(method => <option key={method} value={method}>{method}</option>)}
+                      </select>
+                    </div>
+
+                    <AnimatePresence>
+                      {paymentMethod === "Bayar Sekarang (Transfer)" && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                          animate={{ opacity: 1, height: 'auto', marginTop: 16 }}
+                          exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="p-4 bg-white border border-pink-100 rounded-2xl flex flex-col items-center text-center">
+                            <p className="text-sm font-bold text-gray-800 mb-3">Scan QRIS untuk Bayar</p>
+                            <div className="w-full flex justify-center mb-3">
+                              <img 
+                                src="/qris.jpg" 
+                                alt="QRIS Code" 
+                                className="w-48 h-auto object-contain rounded-xl border border-pink-100 shadow-sm"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                  const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                                  if(fallback) fallback.style.display = 'flex';
+                                }}
+                              />
+                              <div className="hidden w-40 h-40 bg-brand-bg rounded-xl items-center justify-center border-2 border-dashed border-pink-200 flex-col text-center p-2">
+                                <QrCode className="w-10 h-10 text-brand-pink opacity-50 mb-2" />
+                                <span className="text-[10px] font-bold text-brand-pink">Upload file QRIS ke folder public/ dengan nama qris.jpg</span>
+                              </div>
+                            </div>
+                            <p className="text-[11px] text-gray-500 font-medium mb-1">Atau transfer manual ke:</p>
+                            <div className="bg-pink-50 w-full py-4 rounded-lg space-y-1">
+                              <p className="text-xl font-bold text-gray-800">Aplikasi DANA</p>
+                              <p className="text-lg font-black text-brand-pink tracking-wider">081379104922</p>
+                            </div>
+                            <p className="text-[10px] text-gray-400 font-medium mt-3 italic">* Jangan lupa kirim bukti transfer ke mimin ya! 🌸</p>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 )}
               </div>
@@ -1019,7 +1272,14 @@ export default function App() {
         <motion.button
           initial={{ y: 100, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          onClick={() => setIsCartOpen(true)}
+          onClick={() => {
+            if (!poDate || !poTime) {
+              alert("pilih tanggal dan sesi dulu ya besstiee");
+              document.getElementById('po-status')?.scrollIntoView({ behavior: 'smooth' });
+              return;
+            }
+            setIsCartOpen(true);
+          }}
           className="fixed bottom-8 right-8 z-30 flex items-center gap-3 p-4 md:px-6 md:py-4 bg-brand-pink hover:bg-brand-deep-pink text-white rounded-full shadow-2xl shadow-brand-pink/40 transition-all hover:scale-105 active:scale-95"
         >
           <div className="relative">
