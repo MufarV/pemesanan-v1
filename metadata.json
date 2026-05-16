@@ -2,5 +2,5 @@
   "name": "Cilok Aesthetic - Snack Nyaman Mahasiswa",
   "description": "Website pemesanan cilok premium dengan rasa otentik dan tampilan aesthetic, khusus untuk menemani waktu belajar mahasiswa.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
