@@ -264,11 +264,17 @@ function POStatusDashboard({ storeSettings, selectedDate, selectedTime, onSelect
     fetchAllSlots();
   }, [storeSettings]);
 
-  if (!storeSettings || loading) return null;
+  if (!storeSettings || loading) {
+    return (
+      <div className="max-w-6xl mx-auto px-4 py-12 animate-pulse">
+        <div className="h-[200px] bg-white/50 rounded-[3rem] border-2 border-dashed border-pink-50" />
+      </div>
+    );
+  }
 
   return (
     <div id="po-status" className="max-w-6xl mx-auto px-4 py-12 scroll-mt-20">
-      <div className="bg-white rounded-[3rem] p-8 md:p-12 shadow-soft border-2 border-pink-50 relative overflow-hidden">
+      <div className="bg-white rounded-[3rem] p-8 md:p-12 shadow-xl shadow-pink-100/20 border-2 border-pink-50 relative overflow-hidden transform-gpu">
         <div className="absolute top-0 right-0 w-32 h-32 bg-pink-50/50 rounded-full -mr-16 -mt-16" />
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-6">
@@ -718,7 +724,7 @@ export default function App() {
           initial={{ y: -100, x: `${cilok.x}vw`, rotate: 0 }}
           animate={{ y: '120vh', rotate: cilok.rotation }}
           transition={{ duration: cilok.duration, ease: "linear" }}
-          className="fixed pointer-events-none z-50 shadow-brand-pink/20 select-none backface-hidden"
+          className="fixed pointer-events-none z-50 shadow-brand-pink/20 select-none backface-hidden transform-gpu will-change-transform"
           style={{ width: cilok.size, height: cilok.size }}
         >
           <img src="/logo.png" alt="" className="w-full h-full object-contain pointer-events-none" />
@@ -796,7 +802,7 @@ export default function App() {
               <div className="w-10 h-10 bg-brand-pink rounded-full flex items-center justify-center text-white font-bold text-xl border-2 border-brand-accent shadow-sm overflow-hidden flex-shrink-0">
                 <span className="font-display font-black text-brand-accent" style={{ WebkitTextStroke: '0.5px white' }}>C</span>
               </div>
-              <h1 className="text-lg md:text-2xl font-display font-black tracking-tighter text-brand-pink italic drop-shadow-sm uppercase hidden sm:block" style={{ WebkitTextStroke: '1px var(--color-brand-accent)' }}>
+              <h1 className="text-lg md:text-2xl font-display font-black tracking-tighter text-brand-pink italic drop-shadow-sm uppercase hidden sm:block pointer-events-none" style={{ WebkitTextStroke: '1px var(--color-brand-accent)' }}>
                 CHEELOK
               </h1>
             </div>
@@ -832,8 +838,8 @@ export default function App() {
 
       {/* --- Hero Section --- */}
       <section className="relative px-4 py-16 md:py-24 max-w-7xl mx-auto overflow-hidden">
-        <div className="absolute top-0 right-0 -z-10 opacity-10 pointer-events-none">
-          <div className="w-[300px] h-[300px] md:w-[500px] md:h-[500px] bg-brand-pink rounded-full blur-[60px] md:blur-[100px]" />
+        <div className="absolute top-0 right-0 -z-10 opacity-10 pointer-events-none transform-gpu">
+          <div className="w-[300px] h-[300px] md:w-[500px] md:h-[500px] bg-brand-pink rounded-full blur-[60px] md:blur-[100px] transform-gpu" />
         </div>
         
         <div className="grid md:grid-cols-2 gap-12 items-center">
@@ -953,9 +959,9 @@ export default function App() {
         <motion.div 
           animate={{ x: ["0%", "-50%"] }} 
           transition={{ repeat: Infinity, duration: 30, ease: "linear" }}
-          className="flex gap-12 items-center w-max z-10 whitespace-nowrap backface-hidden"
+          className="flex gap-12 items-center w-max z-10 whitespace-nowrap backface-hidden transform-gpu will-change-transform"
         >
-          {[...Array(12)].map((_, i) => (
+          {[...Array(6)].map((_, i) => (
             <React.Fragment key={i}>
               <span className="text-white font-display font-black tracking-widest uppercase text-base flex items-center gap-2 drop-shadow-sm">
                  Cheelok_Chill
