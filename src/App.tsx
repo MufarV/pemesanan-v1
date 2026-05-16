@@ -662,7 +662,7 @@ export default function App() {
     }
 
     try {
-      const finalPrice = totalPrice - 5000;
+      const finalPrice = totalPrice;
       const itemsString = cart.map(item => `${item.name} (${item.kuah}) x${item.quantity}`).join(', ');
       
       const payload = {
@@ -813,7 +813,7 @@ export default function App() {
               <a href="#menu" className="hidden md:inline-block text-brand-pink md:border-b-2 md:border-brand-pink px-2 py-1 shrink-0">Menu</a>
               <a href="#testimonials" className="hover:text-brand-pink transition-colors text-gray-400 md:text-gray-800 px-2 py-1 shrink-0">Testimoni</a>
               <a href="#about" className="hover:text-brand-pink transition-colors text-gray-400 md:text-gray-800 px-2 py-1 shrink-0">Tentang</a>
-              <a href={`https://wa.me/62${storeSettings?.whatsappNumber || '89691223205'}`} target="_blank" rel="noreferrer" className="hover:text-brand-pink transition-colors text-gray-400 md:text-gray-800 px-2 py-1 shrink-0">Kritik & Saran</a>
+              <a href="#contact" className="hover:text-brand-pink transition-colors text-gray-400 md:text-gray-800 px-2 py-1 shrink-0">Kritik & Saran</a>
             </nav>
             
             <button 
@@ -1050,7 +1050,7 @@ export default function App() {
       </section>
 
       {/* --- Footer --- */}
-      <footer className="bg-white border-t border-pink-100 py-12">
+      <footer id="contact" className="bg-white border-t border-pink-100 py-12">
         <div className="max-w-6xl mx-auto px-4 flex flex-col items-center">
           <div className="flex flex-col items-center justify-center mb-8">
             <h1 className="text-4xl font-display font-black tracking-tighter text-brand-pink italic drop-shadow-sm uppercase mb-4" style={{ WebkitTextStroke: '1px var(--color-brand-accent)' }}>
@@ -1068,6 +1068,12 @@ export default function App() {
              <a href={`https://wa.me/62${storeSettings?.whatsappNumber || '89691223205'}`} target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-pink-50 flex items-center justify-center gap-2 text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-105 font-bold text-sm tracking-wider uppercase">
                 <Phone className="w-5 h-5" /> WhatsApp
              </a>
+          </div>
+          
+          <div className="max-w-md text-center mb-8">
+            <p className="text-gray-500 font-medium italic text-balance px-4 leading-relaxed">
+              "Kepo in kami yuk bestiee.. dan jika ada kritik dan saran ide langsung infoin kami yakk..🤗"
+            </p>
           </div>
           <p className="font-medium text-gray-400 text-xs tracking-widest font-display text-center">
             © 2026 CHEELOK INDONESIA • CHILL PERUTNYA, HEMAT HARGANYA
@@ -1327,14 +1333,10 @@ export default function App() {
                     <span className="text-gray-400 font-bold uppercase tracking-widest">Subtotal</span>
                     <span className="font-bold text-gray-700">Rp{totalPrice.toLocaleString('id-ID')}</span>
                   </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-400 font-bold uppercase tracking-widest">Diskon Siswa</span>
-                    <span className="font-bold text-green-500">- Rp 5.000</span>
-                  </div>
                   <div className="h-[1px] bg-pink-50 my-2"></div>
                   <div className="flex justify-between items-center">
                     <span className="font-display font-black text-gray-800 uppercase tracking-widest">Total</span>
-                    <span className="font-display font-black text-3xl text-brand-pink tracking-tight">Rp{(totalPrice - 5000).toLocaleString('id-ID')}</span>
+                    <span className="font-display font-black text-3xl text-brand-pink tracking-tight">Rp{totalPrice.toLocaleString('id-ID')}</span>
                   </div>
                   <button 
                     onClick={handleCheckout}
