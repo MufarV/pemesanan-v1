@@ -1072,7 +1072,7 @@ export default function App() {
           
           <div className="max-w-md text-center mb-8">
             <p className="text-gray-500 font-medium italic text-balance px-4 leading-relaxed">
-              "Kepo in kami yuk bestiee.. dan jika ada kritik dan saran ide langsung infoin kami yakk..🤗"
+              "Kepo in kami yuk bestiee..  Jika ada kritik dan saran ide bisa langsung infoin kami yakk..🤗"
             </p>
           </div>
           <p className="font-medium text-gray-400 text-xs tracking-widest font-display text-center">
