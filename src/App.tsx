@@ -518,22 +518,22 @@ export default function App() {
     setRemainingSlotsCount(sisa);
   }, [poDate, poTime, storeSettings]);
 
-  // Set default selection
-  useEffect(() => {
-    if (storeSettings && !poDate) {
-      const dates = (storeSettings.openPoDates && storeSettings.openPoDates.length > 0)
-        ? storeSettings.openPoDates
-        : (storeSettings.poDatesConfig ? Object.keys(storeSettings.poDatesConfig).sort() : []);
-      
-      if (dates.length > 0) {
-        const firstDate = dates[0];
-        setPODate(firstDate);
-        const config = storeSettings.poDatesConfig?.[firstDate];
-        const times = config?.times || storeSettings.poTimes || PO_TIMES;
-        if (times.length > 0) setPOTime(times[0]);
-      }
-    }
-  }, [storeSettings, poDate]);
+  // Default selection is disabled
+  // useEffect(() => {
+  //   if (storeSettings && !poDate) {
+  //     const dates = (storeSettings.openPoDates && storeSettings.openPoDates.length > 0)
+  //       ? storeSettings.openPoDates
+  //       : (storeSettings.poDatesConfig ? Object.keys(storeSettings.poDatesConfig).sort() : []);
+  //     
+  //     if (dates.length > 0) {
+  //       const firstDate = dates[0];
+  //       setPODate(firstDate);
+  //       const config = storeSettings.poDatesConfig?.[firstDate];
+  //       const times = config?.times || storeSettings.poTimes || PO_TIMES;
+  //       if (times.length > 0) setPOTime(times[0]);
+  //     }
+  //   }
+  // }, [storeSettings, poDate]);
 
   const toggleAudio = () => {
     if (audioRef.current) {
