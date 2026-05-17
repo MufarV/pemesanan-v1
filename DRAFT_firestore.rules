@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() { return request.auth != null; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    
+    // Store Settings Rules
+    match /pengaturan/pengaturan_toko {
+      allow read: if true; // Publicly readable for the landing page
+      allow write: if false; // Only manageable via Firebase Console or Admin SDK for now
+    }
+
+    // Orders Rules
+    match /pesanan/{orderId} {
+      // 3. Path Variable Hardening
+      allow create: if isValidId(orderId) && isValidOrder(incoming());
+      
+      // 8. Secure List Queries (The "Query Enforcer")
+      // Instead of allow list: if true, we force query by ownerId
+      allow list: if resource.data.ownerId == 'MCggQBt70BeNWsg7mDJooJ9jJ003';
+      
+      allow get: if true;
+      
+      // 4. Tiered Identity Logic & 2. Validation Blueprints
+      allow update: if isValidId(orderId) 
+        && isValidOrder(incoming())
+        && incoming().ownerId == existing().ownerId // Immutable ownerId
+        && (
+          // Action: Admin Update (simulated status change)
+          (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+          || 
+          // Action: Customer correction (if we wanted to allow it)
+          (incoming().diff(existing()).affectedKeys().hasOnly(['customerName', 'items']))
+        );
+      
+      allow delete: if false;
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['ownerId', 'customerName', 'tanggal_po', 'waktu_po', 'totalPcs', 'status', 'createdAt'])
+        // 5. Total Array Guarding & Schema Constraints
+        && data.ownerId == 'MCggQBt70BeNWsg7mDJooJ9jJ003'
+        && data.customerName is string && data.customerName.size() >= 2 && data.customerName.size() <= 100
+        && data.tanggal_po is string && data.tanggal_po.size() <= 20
+        && data.waktu_po is string && data.waktu_po.size() <= 50
+        && data.totalPcs is int && data.totalPcs >= 0
+        && data.status in ['Baru', 'Diproses', 'Selesai', 'Dibatalkan']
+        && data.createdAt is string; // ISO string
+    }
+  }
+}

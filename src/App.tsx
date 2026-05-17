@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { doc, onSnapshot, collection, addDoc, serverTimestamp, getDocs, query, where } from 'firebase/firestore';
+import { doc, onSnapshot, collection, addDoc, updateDoc, setDoc, serverTimestamp, getDocs, query, where, getDocFromServer } from 'firebase/firestore';
 import { db } from './lib/firebase';
 import { 
   ShoppingBag, 
@@ -105,6 +105,8 @@ const PAYMENT_METHODS = [
   "Bayar Sekarang (Transfer)"
 ];
 
+const DEFAULT_IMAGE = "https://images.unsplash.com/photo-1548345680-f5475aa5114a?auto=format&fit=crop&q=80&w=800";
+
 // --- Utils ---
 enum OperationType {
   CREATE = 'create',
@@ -128,10 +130,11 @@ interface FirestoreErrorInfo {
 }
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const message = error instanceof Error ? error.message : String(error);
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: message,
     authInfo: {
-      userId: null, // No auth implementation yet
+      userId: null,
       email: null,
       emailVerified: null,
       isAnonymous: null,
@@ -140,131 +143,167 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     path
   }
   console.error('Firestore Error: ', JSON.stringify(errInfo));
+  
+  if (message.includes('unavailable') || message.includes('Could not reach Cloud Firestore backend')) {
+    alert("Koneksi bermasalah. Pastikan internet lancar ya, Bestie! 🌸");
+  } else if (message.includes('permission') || message.includes('insufficient')) {
+    alert(`Izin Ditolak (${path}). Hubungi Admin via WA untuk memesan manual jika terus begini ya! 💖`);
+  } else {
+    alert(`Terjadi kesalahan (${path}): ${message}`);
+  }
+  
   throw new Error(JSON.stringify(errInfo));
 }
+
+// Pulse check for connectivity
+async function checkConnectivity() {
+  try {
+    // Attempting to get doc from server to verify connection
+    await getDocFromServer(doc(db, 'pengaturan', 'pengaturan_toko'));
+    console.log("Firestore connection check: SUCCESS");
+  } catch (error) {
+    if (error instanceof Error && (error.message.includes('unavailable') || error.message.includes('offline'))) {
+      console.warn("Firestore connection check: UNAVAILABLE. Operating in offline mode.");
+    } else {
+      console.error("Firestore connection check: FAILED", error);
+    }
+  }
+}
+
+checkConnectivity();
 
 function SlotStatus({ date, time, storeSettings }: { date: string, time: string, storeSettings: any }) {
   const [slotInfo, setSlotInfo] = useState<string>("Mengecek...");
 
   useEffect(() => {
-    async function fetchSlots() {
-      if (!date || !time) {
-        setSlotInfo("Pilih Sesi...");
-        return;
-      }
-      try {
-        let limit = 0;
-        if (storeSettings?.poDatesConfig && storeSettings.poDatesConfig[date]) {
-          const config = storeSettings.poDatesConfig[date];
-          const idx = config.times?.indexOf(time);
-          if (idx !== -1 && config.limits) limit = parseInt(config.limits[idx] || 0);
-        } else if (storeSettings?.poTimes && storeSettings.poLimits) {
-          const idx = storeSettings.poTimes.indexOf(time);
-          if (idx !== -1) limit = parseInt(storeSettings.poLimits[idx] || 0);
-        }
+    if (!date || !time || !storeSettings) {
+      setSlotInfo("Pilih Sesi...");
+      return;
+    }
 
-        if (limit > 0) {
-          try {
-            const q = query(
-              collection(db, "pesanan"),
-              where("ownerId", "==", "MCggQBt70BeNWsg7mDJooJ9jJ003"),
-              where("tanggal_po", "==", date),
-              where("waktu_po", "==", time),
-              where("status", "!=", "Dibatalkan")
-            );
-            const querySnapshot = await getDocs(q);
-            let count = 0;
-            querySnapshot.forEach(d => {
-              const df = d.data();
-              if (df) {
-                count += parseInt(df.totalPcs || 1);
-              }
-            });
-            setSlotInfo(`Sisa: ${Math.max(0, limit - count)} pcs`);
-          } catch (error) {
-            console.warn("Tidak dapat membaca data pesanan untuk menghitung slot (izin admin diperlukan). Menampilkan slot tersedia.");
-            setSlotInfo("Slot Tersedia");
-          }
-        } else {
-          setSlotInfo("Slot Tersedia");
-        }
-      } catch (e) {
-        setSlotInfo("Tersedia");
+    let limit = 0;
+    let booked = 0;
+
+    // 1. Precise Session Lookup
+    if (storeSettings.poDatesConfig?.[date]) {
+      const config = storeSettings.poDatesConfig[date];
+      const idx = config.times?.indexOf(time);
+      if (idx !== -1) {
+        if (config.limits) limit = parseInt(config.limits[idx] || 0);
+        if (config.booked) booked = parseInt(config.booked[idx] || 0);
+      }
+    } else if (storeSettings.poTimes && storeSettings.poLimits) {
+      const idx = storeSettings.poTimes.indexOf(time);
+      if (idx !== -1) {
+        limit = parseInt(storeSettings.poLimits[idx] || 0);
+        if (storeSettings.poBooked) booked = parseInt(storeSettings.poBooked[idx] || 0);
       }
     }
-    fetchSlots();
+
+    // 2. Fallback to Dynamic Limit if no specific limit found
+    if (limit === 0) {
+      const possibleValues = [
+        storeSettings?.operasional_toko_online?.keterangan_front_end,
+        storeSettings?.operasional_toko_online?.keterangan_frontend,
+        storeSettings?.operasional_toko?.keterangan_front_end,
+        storeSettings?.operasional_toko?.keterangan_frontend,
+        storeSettings?.digital_tools?.keterangan_front_end,
+        storeSettings?.digital_tools?.keterangan_frontend,
+        storeSettings?.digital_tools?.front_end,
+        storeSettings?.digital_tools?.frontend,
+        storeSettings?.keterangan_front_end,
+        storeSettings?.keterangan_frontend,
+        storeSettings?.keteranganFrontEnd,
+        storeSettings?.front_end,
+        storeSettings?.targets?.front_end,
+        storeSettings?.targets?.digital
+      ];
+      for (const val of possibleValues) {
+        if (val !== undefined && val !== null && val !== "") {
+          const parsed = parseInt(String(val).replace(/[^0-9]/g, ''));
+          if (!isNaN(parsed) && parsed > 0) {
+            limit = parsed;
+            break;
+          }
+        }
+      }
+    }
+
+    if (limit > 0) {
+      const sisa = Math.max(0, limit - booked);
+      setSlotInfo(`Sisa: ${sisa} pcs`);
+    } else {
+      setSlotInfo("Slot Tersedia");
+    }
   }, [date, time, storeSettings]);
 
-  return <span className="font-display font-black text-brand-pink text-sm">{slotInfo}</span>;
+  return <span className="font-display font-black text-brand-pink text-sm tracking-tight">{slotInfo}</span>;
 }
 
 function POStatusDashboard({ storeSettings, selectedDate, selectedTime, onSelect }: { storeSettings: any, selectedDate: string, selectedTime: string, onSelect: (date: string, time: string) => void }) {
   const [sessionData, setSessionData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchAllSlots() {
-      if (!storeSettings) return;
-      setLoading(true);
-      try {
-        try {
-          const q = query(
-            collection(db, "pesanan"),
-            where("ownerId", "==", "MCggQBt70BeNWsg7mDJooJ9jJ003"),
-            where("status", "!=", "Dibatalkan")
-          );
-          const querySnapshot = await getDocs(q);
-          const allOrders = querySnapshot.docs.map(doc => doc.data());
+    if (!storeSettings) return;
 
-          const dates = (storeSettings.openPoDates && storeSettings.openPoDates.length > 0)
-            ? storeSettings.openPoDates
-            : (storeSettings.poDatesConfig ? Object.keys(storeSettings.poDatesConfig).sort() : []);
-          const result = dates.map((date: string) => {
-            const config = storeSettings.poDatesConfig?.[date];
-            const times = config?.times || storeSettings.poTimes || [];
-            const limits = config?.limits || storeSettings.poLimits || [];
+    const dates = (storeSettings.openPoDates && storeSettings.openPoDates.length > 0)
+      ? storeSettings.openPoDates
+      : (storeSettings.poDatesConfig ? Object.keys(storeSettings.poDatesConfig).sort() : []);
+      
+    const result = dates.map((date: string) => {
+      const config = storeSettings.poDatesConfig?.[date];
+      const times = config?.times || storeSettings.poTimes || PO_TIMES;
+      const limits = config?.limits || storeSettings.poLimits || [];
 
-            const sessions = times.map((time: string, idx: number) => {
-              const limit = parseInt(limits[idx] || 0);
-              const count = allOrders
-                .filter(o => o.tanggal_po === date && o.waktu_po === time)
-                .reduce((sum, o) => sum + parseInt(o.totalPcs || 1), 0);
-              return { time, limit, count, remaining: limit > 0 ? Math.max(0, limit - count) : null };
-            });
-
-            return { date, sessions };
-          });
-          setSessionData(result);
-        } catch (error) {
-          console.warn("Permission denied to read pesanan for dashboard. Assuming 0 ordered.");
-          // Fallback if we can't read pesanan
-          const dates = (storeSettings.openPoDates && storeSettings.openPoDates.length > 0)
-            ? storeSettings.openPoDates
-            : (storeSettings.poDatesConfig ? Object.keys(storeSettings.poDatesConfig).sort() : []);
-          const result = dates.map((date: string) => {
-            const config = storeSettings.poDatesConfig?.[date];
-            const times = config?.times || storeSettings.poTimes || [];
-            const limits = config?.limits || storeSettings.poLimits || [];
-
-            const sessions = times.map((time: string, idx: number) => {
-              const limit = parseInt(limits[idx] || 0);
-              return { time, limit, count: 0, remaining: limit > 0 ? limit : null };
-            });
-
-            return { date, sessions };
-          });
-          setSessionData(result);
+      const sessions = times.map((time: string, idx: number) => {
+        let limit = parseInt(limits[idx] || 0);
+        
+        // Dynamic limit fallback
+        if (limit === 0) {
+          const possibleValues = [
+            storeSettings?.operasional_toko_online?.keterangan_front_end,
+            storeSettings?.operasional_toko_online?.keterangan_frontend,
+            storeSettings?.operasional_toko?.keterangan_front_end,
+            storeSettings?.operasional_toko?.keterangan_frontend,
+            storeSettings?.digital_tools?.keterangan_front_end,
+            storeSettings?.digital_tools?.keterangan_frontend,
+            storeSettings?.digital_tools?.front_end,
+            storeSettings?.digital_tools?.frontend,
+            storeSettings?.keterangan_front_end,
+            storeSettings?.keterangan_frontend,
+            storeSettings?.keteranganFrontEnd,
+            storeSettings?.front_end,
+            storeSettings?.targets?.front_end,
+            storeSettings?.targets?.digital
+          ];
+          for (const val of possibleValues) {
+            if (val !== undefined && val !== null && val !== "") {
+              const parsed = parseInt(String(val).replace(/[^0-9]/g, ''));
+              if (!isNaN(parsed) && parsed > 0) {
+                limit = parsed;
+                break;
+              }
+            }
+          }
         }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchAllSlots();
+
+        let booked = 0;
+        if (config?.booked) {
+          booked = parseInt(config.booked[idx] || 0);
+        } else if (storeSettings.poBooked) {
+          const fallbackIdx = (storeSettings.poTimes || []).indexOf(time);
+          if (fallbackIdx !== -1) booked = parseInt(storeSettings.poBooked[fallbackIdx] || 0);
+        }
+        
+        return { time, limit, count: booked, remaining: limit > 0 ? Math.max(0, limit - booked) : null };
+      });
+
+      return { date, sessions };
+    });
+    setSessionData(result);
   }, [storeSettings]);
 
-  if (!storeSettings || loading) {
+  if (!storeSettings) {
     return (
       <div className="max-w-6xl mx-auto px-4 py-12 animate-pulse">
         <div className="h-[200px] bg-white/50 rounded-[3rem] border-2 border-dashed border-pink-50" />
@@ -364,7 +403,7 @@ function ProductCard({ item, onAdd }: { key?: string, item: Product, onAdd: (pro
     >
       <div className="w-40 h-40 bg-pink-50 rounded-full mb-6 flex items-center justify-center relative overflow-hidden group-hover:scale-105 transition-transform duration-500 border border-pink-100 shrink-0">
         <img 
-          src={selectedOption.image || item.image} 
+          src={(selectedOption.image || item.image) || DEFAULT_IMAGE} 
           alt={item.name}
           className="w-full h-full object-cover opacity-90"
         />
@@ -416,17 +455,58 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Slot PO logic based on poDate and poTime
   useEffect(() => {
-    if (!storeSettings) return;
+    if (!storeSettings || !poDate || !poTime) {
+      setRemainingSlotsCount(null);
+      return;
+    }
 
     let limit = 0;
-    if (storeSettings?.poDatesConfig && storeSettings.poDatesConfig[poDate]) {
+    let booked = 0;
+
+    if (storeSettings.poDatesConfig?.[poDate]) {
       const config = storeSettings.poDatesConfig[poDate];
       const idx = config.times?.indexOf(poTime);
-      if (idx !== -1 && config.limits) limit = parseInt(config.limits[idx] || 0);
-    } else if (storeSettings?.poTimes && storeSettings.poLimits) {
+      if (idx !== -1) {
+        if (config.limits) limit = parseInt(config.limits[idx] || 0);
+        if (config.booked) booked = parseInt(config.booked[idx] || 0);
+      }
+    } else if (storeSettings.poTimes && storeSettings.poLimits) {
       const idx = storeSettings.poTimes.indexOf(poTime);
-      if (idx !== -1) limit = parseInt(storeSettings.poLimits[idx] || 0);
+      if (idx !== -1) {
+        limit = parseInt(storeSettings.poLimits[idx] || 0);
+        if (storeSettings.poBooked) booked = parseInt(storeSettings.poBooked[idx] || 0);
+      }
+    }
+
+    // Dynamic limit fallback
+    if (limit === 0) {
+      const possibleValues = [
+        storeSettings?.operasional_toko_online?.keterangan_front_end,
+        storeSettings?.operasional_toko_online?.keterangan_frontend,
+        storeSettings?.operasional_toko?.keterangan_front_end,
+        storeSettings?.operasional_toko?.keterangan_frontend,
+        storeSettings?.digital_tools?.keterangan_front_end,
+        storeSettings?.digital_tools?.keterangan_frontend,
+        storeSettings?.digital_tools?.front_end,
+        storeSettings?.digital_tools?.frontend,
+        storeSettings?.keterangan_front_end,
+        storeSettings?.keterangan_frontend,
+        storeSettings?.keteranganFrontEnd,
+        storeSettings?.front_end,
+        storeSettings?.targets?.front_end,
+        storeSettings?.targets?.digital
+      ];
+      for (const val of possibleValues) {
+        if (val !== undefined && val !== null && val !== "") {
+          const parsed = parseInt(String(val).replace(/[^0-9]/g, ''));
+          if (!isNaN(parsed) && parsed > 0) {
+            limit = parsed;
+            break;
+          }
+        }
+      }
     }
 
     if (limit <= 0) {
@@ -434,37 +514,26 @@ export default function App() {
       return;
     }
 
-    // Monitor orders for this slot
-    // For simplicity we use a simple fetch here, but in a real app we'd use onSnapshot with query
-    const checkSlots = async () => {
-      try {
-      try {
-        const q = query(
-          collection(db, "pesanan"),
-          where("ownerId", "==", "MCggQBt70BeNWsg7mDJooJ9jJ003"),
-          where("tanggal_po", "==", poDate),
-          where("waktu_po", "==", poTime),
-          where("status", "!=", "Dibatalkan")
-        );
-        const querySnapshot = await getDocs(q);
-        let count = 0;
-        querySnapshot.forEach(d => {
-          const df = d.data();
-          if (df) {
-            count += parseInt(df.totalPcs || 1);
-          }
-        });
-        setRemainingSlotsCount(Math.max(0, limit - count));
-      } catch (error) {
-        console.warn("Could not check slots due to permissions. Proceeding...");
-        setRemainingSlotsCount(limit > 0 ? limit : null);
-      }
-      } catch (e) {
-        console.error("Error checking slots:", e);
-      }
-    };
-    checkSlots();
+    const sisa = Math.max(0, limit - booked);
+    setRemainingSlotsCount(sisa);
   }, [poDate, poTime, storeSettings]);
+
+  // Set default selection
+  useEffect(() => {
+    if (storeSettings && !poDate) {
+      const dates = (storeSettings.openPoDates && storeSettings.openPoDates.length > 0)
+        ? storeSettings.openPoDates
+        : (storeSettings.poDatesConfig ? Object.keys(storeSettings.poDatesConfig).sort() : []);
+      
+      if (dates.length > 0) {
+        const firstDate = dates[0];
+        setPODate(firstDate);
+        const config = storeSettings.poDatesConfig?.[firstDate];
+        const times = config?.times || storeSettings.poTimes || PO_TIMES;
+        if (times.length > 0) setPOTime(times[0]);
+      }
+    }
+  }, [storeSettings, poDate]);
 
   const toggleAudio = () => {
     if (audioRef.current) {
@@ -483,15 +552,43 @@ export default function App() {
       (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setStoreSettings(data);
-          // Don't auto-set to force user selection as requested
+          setStoreSettings((prev: any) => ({ ...prev, ...data }));
         }
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, "pengaturan/pengaturan_toko");
       }
     );
-    return () => unsub();
+
+    const unsubOp = onSnapshot(
+      doc(db, "pengaturan", "operasional_toko_online"),
+      (docSnap) => {
+        if (docSnap.exists()) {
+          setStoreSettings((prev: any) => ({ ...prev, operasional_toko_online: docSnap.data() }));
+        }
+      },
+      (error) => {
+        console.warn("Could not fetch operasional_toko_online settings:", error);
+      }
+    );
+
+    const unsubDigital = onSnapshot(
+      doc(db, "pengaturan", "digital_tools"),
+      (docSnap) => {
+        if (docSnap.exists()) {
+          setStoreSettings((prev: any) => ({ ...prev, digital_tools: docSnap.data() }));
+        }
+      },
+      (error) => {
+        console.warn("Could not fetch digital_tools settings:", error);
+      }
+    );
+
+    return () => {
+      unsub();
+      unsubOp();
+      unsubDigital();
+    };
   }, []);
 
   const handleLogoClick = () => {
@@ -608,57 +705,9 @@ export default function App() {
     }
 
     // Cek batas pcs!
-    if (storeSettings) {
-      let currentTimes: string[] = [];
-      let currentLimits: number[] = [];
-
-      if (storeSettings.poDatesConfig && storeSettings.poDatesConfig[poDate]) {
-        currentTimes = storeSettings.poDatesConfig[poDate].times || [];
-        currentLimits = storeSettings.poDatesConfig[poDate].limits || [];
-      } else if (storeSettings.poTimes && storeSettings.poLimits) {
-        currentTimes = storeSettings.poTimes || [];
-        currentLimits = storeSettings.poLimits || [];
-      }
-
-      if (currentTimes.length > 0 && currentLimits.length > 0) {
-        const idx = currentTimes.indexOf(poTime);
-        if (idx !== -1) {
-          let batasMaksimals = parseInt(currentLimits[idx] as any) || 0;
-
-          if (batasMaksimals > 0) {
-            try {
-              try {
-                const q = query(
-                  collection(db, "pesanan"),
-                  where("ownerId", "==", "MCggQBt70BeNWsg7mDJooJ9jJ003"),
-                  where("tanggal_po", "==", poDate),
-                  where("waktu_po", "==", poTime),
-                  where("status", "!=", "Dibatalkan")
-                );
-                const querySnapshot = await getDocs(q);
-                let totalPcsSudahDipesan = 0;
-                querySnapshot.forEach(doc => {
-                  const df = doc.data();
-                  if (df) {
-                    totalPcsSudahDipesan += parseInt(df.totalPcs || 1);
-                  }
-                });
-                  
-                if (totalPcsSudahDipesan + totalItems > batasMaksimals) {
-                  const sisa = Math.max(0, batasMaksimals - totalPcsSudahDipesan);
-                  alert(`Maaf, waktu tersebut sudah penuh. Sisa slot: ${sisa} pcs. Mohon pilih waktu lain yang tersedia.`);
-                  return;
-                }
-              } catch (error) {
-                console.warn("Bypass slot limit check due to lack of read permissions.");
-                // We let them order since we can't verify 
-              }
-            } catch (e) {
-              console.error("Gagal cek batas pcs:", e);
-            }
-          }
-        }
-      }
+    if (remainingSlotsCount !== null && totalItems > remainingSlotsCount) {
+      alert(`Pemesanan Ditolak: Anda mencoba memesan ${totalItems} pcs, tetapi sisa slot Front-end yang tersedia saat ini hanya ${remainingSlotsCount} pcs.`);
+      return;
     }
 
     try {
@@ -668,7 +717,7 @@ export default function App() {
       const payload = {
         ownerId: "MCggQBt70BeNWsg7mDJooJ9jJ003",
         status: "Baru",
-        createdAt: serverTimestamp(),
+        createdAt: new Date().toISOString(),
         customerName: customerName,
         items: itemsString,
         tanggal_po: poDate,
@@ -682,8 +731,40 @@ export default function App() {
       try {
         docRef = await addDoc(collection(db, "pesanan"), payload);
       } catch (error) {
-        handleFirestoreError(error, OperationType.CREATE, "pesanan");
+        handleFirestoreError(error, OperationType.WRITE, "pesanan");
         return;
+      }
+      
+      // Update booked count in StoreSettings
+      try {
+        if (storeSettings?.poDatesConfig?.[poDate]) {
+          const config = { ...storeSettings.poDatesConfig[poDate] };
+          const idx = config.times?.indexOf(poTime);
+          if (idx !== -1) {
+            const newBooked = [...(config.booked || [])];
+            while (newBooked.length <= idx) newBooked.push(0);
+            newBooked[idx] = (parseInt(newBooked[idx] as any) || 0) + totalItems;
+            
+            // Using updateDoc with dot notation is more precise for nested fields
+            await updateDoc(doc(db, "pengaturan", "pengaturan_toko"), {
+              [`poDatesConfig.${poDate}.booked`]: newBooked
+            });
+          }
+        } else if (storeSettings?.poTimes && (storeSettings.poBooked || storeSettings.poLimits)) {
+          const idx = storeSettings.poTimes.indexOf(poTime);
+          if (idx !== -1) {
+            const newBooked = [...(storeSettings.poBooked || [])];
+            while (newBooked.length <= idx) newBooked.push(0);
+            newBooked[idx] = (parseInt(newBooked[idx] as any) || 0) + totalItems;
+            
+            await updateDoc(doc(db, "pengaturan", "pengaturan_toko"), {
+              poBooked: newBooked
+            });
+          }
+        }
+      } catch (error) {
+        // Log the error with more context but don't fail the order
+        // Intentionally suppressed since strict rules prevent client-driven updates
       }
 
       const orderId = docRef.id.slice(-5).toUpperCase();
@@ -870,6 +951,7 @@ export default function App() {
               <a href="#menu" className="px-8 py-4 bg-brand-pink text-white rounded-full font-black shadow-xl shadow-brand-pink/30 hover:bg-brand-deep-pink transition-all flex items-center gap-2 border-b-4 border-brand-deep-pink active:border-b-0 active:translate-y-1">
                 JAJAN SEKARANG <ChevronRight className="w-5 h-5 stroke-[3px]" />
               </a>
+
               <a 
                 href="#po-status" 
                 className="md:hidden w-full sm:w-auto px-6 py-3 bg-white text-brand-pink rounded-full font-bold text-sm border-2 border-pink-100 flex items-center justify-center gap-2 active:scale-95 transition-all"
@@ -1059,13 +1141,13 @@ export default function App() {
             <p className="font-handwriting text-3xl text-brand-pink mt-2 -rotate-2">Chill Perutnya, Hemat Harganya 🌸</p>
           </div>
           <div className="flex flex-wrap justify-center gap-4 mb-8">
-             <a href={`https://instagram.com/${storeSettings?.instagramLink || 'cheelok_chill'}`} target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-pink-50 flex items-center justify-center gap-2 text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-105 font-bold text-sm tracking-wider uppercase">
+             <a id="btn_ig_footer" href={`https://instagram.com/${storeSettings?.instagramLink || 'cheelok_chill'}`} target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-pink-50 flex items-center justify-center gap-2 text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-105 font-bold text-sm tracking-wider uppercase">
                 <Instagram className="w-5 h-5" /> Instagram
              </a>
              <a href="https://t.me/+6289691223205" target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-pink-50 flex items-center justify-center gap-2 text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-105 font-bold text-sm tracking-wider uppercase">
                 <Send className="w-5 h-5" /> Telegram
              </a>
-             <a href={`https://wa.me/62${storeSettings?.whatsappNumber || '89691223205'}`} target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-pink-50 flex items-center justify-center gap-2 text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-105 font-bold text-sm tracking-wider uppercase">
+             <a id="btn_wa_footer" href={`https://wa.me/62${storeSettings?.whatsappNumber || '89691223205'}`} target="_blank" rel="noreferrer" className="px-5 py-3 rounded-xl bg-pink-50 flex items-center justify-center gap-2 text-brand-pink hover:bg-brand-pink hover:text-white transition-all transform hover:scale-105 font-bold text-sm tracking-wider uppercase">
                 <Phone className="w-5 h-5" /> WhatsApp
              </a>
           </div>
@@ -1219,7 +1301,7 @@ export default function App() {
                       {cart.map(item => (
                         <div key={item.id} className="flex gap-4 bg-brand-bg p-4 rounded-[2rem] border border-pink-50">
                           <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-sm flex-shrink-0 border-2 border-white">
-                            <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                            <img src={item.image || DEFAULT_IMAGE} alt={item.name} className="w-full h-full object-cover" />
                           </div>
                           <div className="flex-1">
                             <div className="flex justify-between mb-0.5">
@@ -1248,14 +1330,6 @@ export default function App() {
                           </div>
                         </div>
                       ))}
-                      
-                      <div className="mt-8 p-4 bg-pink-50 rounded-2xl border border-dashed border-pink-200 relative overflow-hidden">
-                        <div className="absolute -right-2 -bottom-2 text-4xl opacity-20">🎀</div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl">📝</span>
-                          <p className="text-xs font-bold text-brand-deep-pink uppercase leading-relaxed">"Sumpah ini cheelok terenak yang pernah aku makan pas nugas! Kuahnya the best!" - Anisa, Mahasiswi 💖</p>
-                        </div>
-                      </div>
                     </div>
 
                     <div className="mt-8 pt-8 border-t border-pink-100 space-y-4">
@@ -1338,9 +1412,24 @@ export default function App() {
                     <span className="font-display font-black text-gray-800 uppercase tracking-widest">Total</span>
                     <span className="font-display font-black text-3xl text-brand-pink tracking-tight">Rp{totalPrice.toLocaleString('id-ID')}</span>
                   </div>
+
+                  {remainingSlotsCount !== null && totalItems > remainingSlotsCount && (
+                    <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3">
+                      <div className="text-red-500 mt-0.5">⚠️</div>
+                      <p className="text-[10px] sm:text-xs font-bold text-red-600 leading-relaxed">
+                        Pilih sesi lain/tambah sesi dengan pembelian ulang jika Anda ingin menambah jumlah pembelian per pcs 💖
+                      </p>
+                    </div>
+                  )}
+
                   <button 
                     onClick={handleCheckout}
-                    className="w-full py-5 bg-brand-pink hover:bg-brand-deep-pink text-white rounded-[2rem] font-black text-lg shadow-xl shadow-brand-pink/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+                    className={cn(
+                      "w-full py-5 text-white rounded-[2rem] font-black text-lg shadow-xl transition-all flex items-center justify-center gap-3",
+                      remainingSlotsCount !== null && totalItems > remainingSlotsCount 
+                        ? "bg-gray-300 shadow-none cursor-not-allowed" 
+                        : "bg-brand-pink hover:bg-brand-deep-pink shadow-brand-pink/30 hover:scale-[1.02] active:scale-[0.98]"
+                    )}
                   >
                     BELI SEKARANG <ChevronRight className="w-6 h-6 stroke-[3px]" />
                   </button>

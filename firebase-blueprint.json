@@ -1,26 +1,8 @@
 {
   "entities": {
-    "Order": {
-      "title": "Order",
-      "description": "Customer order for cilok",
-      "type": "object",
-      "properties": {
-        "customerName": { "type": "string" },
-        "items": { "type": "string" },
-        "tanggal_po": { "type": "string" },
-        "waktu_po": { "type": "string" },
-        "totalHarga": { "type": "integer" },
-        "totalPcs": { "type": "integer" },
-        "status": { "type": "string", "enum": ["Baru", "Diproses", "Selesai", "Dibatalkan"] },
-        "paymentMethod": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "ownerId": { "type": "string" }
-      },
-      "required": ["customerName", "items", "tanggal_po", "waktu_po", "totalHarga", "status"]
-    },
     "StoreSettings": {
       "title": "Store Settings",
-      "description": "Global settings for the store",
+      "description": "Global settings for the store operations and appearance",
       "type": "object",
       "properties": {
         "menerimaPesanan": { "type": "boolean" },
@@ -31,20 +13,38 @@
         "heroText": { "type": "string" },
         "bestSellerImage": { "type": "string" },
         "openPoDates": { "type": "array", "items": { "type": "string" } },
-        "poTimes": { "type": "array", "items": { "type": "string" } },
-        "poLimits": { "type": "array", "items": { "type": "integer" } },
-        "products": { "type": "array" }
+        "poDatesConfig": { "type": "object" },
+        "products": { "type": "array" },
+        "reviews": { "type": "array" }
       }
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer order details",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "tanggal_po": { "type": "string" },
+        "waktu_po": { "type": "string" },
+        "totalPcs": { "type": "integer" },
+        "totalHarga": { "type": "integer" },
+        "paymentMethod": { "type": "string" },
+        "status": { "type": "string", "enum": ["Baru", "Diproses", "Selesai", "Dibatalkan"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "items": { "type": "string" }
+      },
+      "required": ["ownerId", "customerName", "tanggal_po", "waktu_po", "totalPcs", "status", "createdAt"]
     }
   },
   "firestore": {
-    "pesanan/{orderId}": {
+    "/pengaturan/pengaturan_toko": {
+      "schema": "StoreSettings",
+      "description": "Single document for store configuration"
+    },
+    "/pesanan/{orderId}": {
       "schema": "Order",
       "description": "Collection of customer orders"
-    },
-    "pengaturan/pengaturan_toko": {
-      "schema": "StoreSettings",
-      "description": "Single document for store settings"
     }
   }
 }

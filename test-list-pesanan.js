@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, getDocs, collection } from 'firebase/firestore';
+import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
 import { readFile } from 'fs/promises';
 
 async function test() {
@@ -9,11 +9,13 @@ async function test() {
   const db = getFirestore(app, config.firestoreDatabaseId);
 
   try {
-    const s1 = await getDocs(collection(db, 'pengaturan'));
-    console.log('pengaturan collection:', s1.docs.map(d => ({id: d.id, data: d.data()})));
+    const q = query(collection(db, "pesanan"), where("ownerId", "==", "MCggQBt70BeNWsg7mDJooJ9jJ003"));
+    const snap = await getDocs(q);
+    console.log('pesanan docs:', snap.docs.length);
   } catch (e) {
-    console.error('pengaturan ERROR:', e.message);
+    console.error('ERROR list pesanan:', e.message);
   }
+
   process.exit();
 }
 test();

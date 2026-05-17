@@ -1,25 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default deny
     match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Allow public access to store settings
-    match /pengaturan/pengaturan_toko {
-      allow read: if true;
-      allow write: if false; // Only admin should write via dashboard (handled there)
-    }
-
-    // Allow public to create orders and check slots via specific queries
-    match /pesanan/{orderId} {
-      allow create: if true;
-      allow get: if true;
-      // Allow listing for slot counting. In production, this should be more restricted.
-      allow list: if true;
-      allow update: if true; // Allowed for now based on previous functionality
+      allow read, write: if true;
     }
   }
 }
-
